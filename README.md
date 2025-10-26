@@ -1,5 +1,5 @@
 # KuSehat Disease Detection Exchange Web3 Machine Learning
-KuSehat adalah website inovasi teknologi kesehatan yaitu Deteksi Penyakit  menggunakan teknologi modern yaitu AI Gemini, Machine Learning:  Keras,Tensorflow,Numpy,dan Object Real-time Detection: Open CV.
+KuSehat adalah website inovasi teknologi kesehatan yaitu Deteksi Penyakit  menggunakan teknologi modern yaitu Web 3 API Luno, AI Gemini, Machine Learning:  Keras,Tensorflow,Numpy,dan Object Real-time Detection: Open CV untuk Submission Hackathon Vibe Coding
 
 
 Feature:
@@ -52,19 +52,16 @@ Nama anggota tim: Ananda Technology Solution(AnTS Groups)
 
 Demo KuSehat Website untuk submit World Hacker Code Leage Tampilan melalui Screenshot:
 
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only0.png?raw=true)
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only.png?raw=true)
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only2.png?raw=true)
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only3.png?raw=true)
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only4.png?raw=true)
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only5.png?raw=true)
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only6.png?raw=true)
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only7.png?raw=true)
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only8.png?raw=true)
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only9.png?raw=true)
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only10.png?raw=true)
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only11.png?raw=true)
-![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/KuSehat-Web3/blob/main/Hasil%20tampilan%20Screenshoot/SS%20Demo%20Website%20KuSehat%20Web3%20Only12.png?raw=true)
+![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/kusehat-hackathon-vibe-coding/blob/main/SS%20Tampilan/SS1.png?raw=true)
+![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/kusehat-hackathon-vibe-coding/blob/main/SS%20Tampilan/SS2.png?raw=true)
+![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/kusehat-hackathon-vibe-coding/blob/main/SS%20Tampilan/SS3.png?raw=true)
+![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/kusehat-hackathon-vibe-coding/blob/main/SS%20Tampilan/SS4.png?raw=true)
+![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/kusehat-hackathon-vibe-coding/blob/main/SS%20Tampilan/SS5.png?raw=true)
+![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/kusehat-hackathon-vibe-coding/blob/main/SS%20Tampilan/SS6.png?raw=true)
+![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/kusehat-hackathon-vibe-coding/blob/main/SS%20Tampilan/SS7.png?raw=true)
+![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/kusehat-hackathon-vibe-coding/blob/main/SS%20Tampilan/SS8.png?raw=true)
+![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/kusehat-hackathon-vibe-coding/blob/main/SS%20Tampilan/SS9.png?raw=true)
+
 
 
 # Cara Kontribusi
