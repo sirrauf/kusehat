@@ -1,5 +1,5 @@
-# KuSehat Disease Detection Exchange Web3 Machine Learning Submssion Vibe Coding Hackthon
-KuSehat adalah website inovasi teknologi kesehatan yaitu Deteksi Penyakit  menggunakan teknologi modern yaitu AI Gemini, Machine Learning:  Keras,Tensorflow,Numpy,dan Object Real-time Detection: Open CV untuk submission Vive Coding Submission.
+# KuSehat Disease Detection Exchange Web3 Machine Learning
+KuSehat adalah website inovasi teknologi kesehatan yaitu Deteksi Penyakit  menggunakan teknologi modern yaitu AI Gemini, Machine Learning:  Keras,Tensorflow,Numpy,dan Object Real-time Detection: Open CV.
 
 
 Feature:
@@ -19,7 +19,10 @@ NOTE PENTING: JALANKAN PROYEK INI HARUS KEADAAN INTERNET MENYALA ATAU WIFI MENYA
 Nama anggota tim: Ananda Technology Solution(AnTS Groups)
 
 # Video Demo:
-[Video Demo Website KuSehat Web3](https://www.youtube.com/watch?v=IAvHF1dgw2o)
+[Video Demo Website KuSehat](https://youtu.be/hDp80JhjohA?si=2KgZKes7GuMsei3G)
+
+# Website KuSehat Beta Testing
+[Website KuSehat Beta Testing](https://temolla-kusehat.hf.space/)
 
 # Cara Training model Dataset:
 1. [Kunjungi Website Teachable Machine](https://teachablemachine.withgoogle.com/)
