@@ -1,5 +1,5 @@
 # KuSehat Disease Detection Exchange Web3 Machine Learning
-KuSehat adalah website inovasi teknologi kesehatan yaitu Deteksi Penyakit  menggunakan teknologi modern yaitu Web 3 API Luno, AI Gemini, Machine Learning:  Keras,Tensorflow,Numpy,dan Object Real-time Detection: Open CV untuk Submission Hackathon Vibe Coding
+KuSehat adalah website inovasi teknologi kesehatan yaitu Deteksi Penyakit  menggunakan teknologi modern yaitu Web 3 API Luno AI, Gemini, Machine Learning:  Keras,Tensorflow,Numpy,dan Object Real-time Detection: Open CV.
 
 
 Feature:
