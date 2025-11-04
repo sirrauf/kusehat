@@ -195,7 +195,6 @@ model = None
 class_names = []
 
 def load_ai_model():
-    # Optional: safely ignore if Keras not installed
     global model, class_names
     if model is not None:
         return
@@ -245,7 +244,6 @@ def home():
         return render_template("main.html", user=user, upload_count_today=upload_count_today)
     return render_template("auth.html")
 
-# --- IMPORTANT: Restore endpoints referenced by templates ---
 @app.route("/login", methods=["POST"])
 @db_session
 def login():
@@ -291,7 +289,6 @@ def logout():
     session.clear()
     return redirect_flash("Anda telah logout.", "success")
 
-# Minimal password reset endpoints if template references them
 @app.route("/forgot-password", methods=["POST"])
 @db_session
 def forgot_password():
@@ -342,6 +339,77 @@ def reset_password(token):
             logger.error(f"Password reset error: {str(e)}")
             return redirect_flash("Terjadi kesalahan saat mereset password.", "error")
     return render_template("reset_password.html", token=token)
+
+# --- Tukar Gambar dengan Reward ---
+@app.route("/exchange", methods=["POST"])
+@login_required
+@db_session
+def exchange(user):
+    try:
+        file = request.files.get("image")
+        is_valid, message = validate_image_file(file)
+        if not is_valid:
+            return jsonify_error(message)
+
+        # Simpan file
+        filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(image_path)
+
+        tujuan = request.form.get("tujuan", "").strip().lower()
+        if tujuan in ("dokter", "rumah_sakit"):
+            reward = REWARD_RUMAH_SAKIT
+            tujuan_text = "dokter"
+            tujuan_display = "Data Medis Rumah Sakit"
+        elif tujuan == "data_ai":
+            reward = REWARD_DATA_AI
+            tujuan_text = "data_ai"
+            tujuan_display = "Data Pelatihan AI"
+        else:
+            return jsonify_error("Tujuan penukaran tidak valid.")
+
+        # Catat Exchange dan update saldo
+        Exchange(User=user, Tujuan=tujuan_text, Gambar=filename, Diagnosa="Upload ke exchange", Tanggal=datetime.now(), SaldoReward=reward)
+        user.Saldo += reward
+
+        return jsonify({
+            "success": True,
+            "message": f"Gambar ditukar! Saldo +IDR {reward:,.2f}",
+            "new_balance": user.Saldo,
+            "image_path": url_for('static', filename=f'uploads/{filename}'),
+            "tujuan_display": tujuan_display,
+            "reward_amount": reward
+        })
+    except Exception as e:
+        logger.error(f"Exchange error: {str(e)}")
+        # Pesan sesuai keluhan "Terjadi kesalahan koneksi"
+        return jsonify_error("Terjadi kesalahan koneksi", 500)
+
+@app.route("/activate_premium", methods=["POST"])
+@login_required
+@db_session
+def activate_premium(user):
+    # Aktifkan paket premium dengan memotong saldo pengguna sebesar PREMIUM_PRICE.
+    # Return JSON agar mudah ditangani via AJAX.
+    try:
+        if user.PaketAktif:
+            return jsonify_error("Paket sudah aktif", 400)
+
+        if user.Saldo < PREMIUM_PRICE:
+            return jsonify_error(f"Saldo tidak mencukupi. Dibutuhkan Rp {PREMIUM_PRICE:,.0f}", 400)
+
+        user.Saldo -= PREMIUM_PRICE
+        user.PaketAktif = True
+
+        return jsonify({
+            "success": True,
+            "message": "Paket Premium berhasil diaktifkan",
+            "new_balance": user.Saldo,
+            "premium_active": True
+        })
+    except Exception as e:
+        logger.error(f"Activate premium error: {str(e)}")
+        return jsonify_error("Terjadi kesalahan saat mengaktifkan paket premium.", 500)
 
 # =========================
 # Jalankan Aplikasi
