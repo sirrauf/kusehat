@@ -1,11 +1,10 @@
-
+# -*- coding: utf-8 -*-
 # =========================
 # Import Libraries
 # =========================
 import os
 import uuid
 import numpy as np
-import requests
 from datetime import datetime, timedelta, date
 from functools import wraps
 
@@ -17,6 +16,7 @@ import bcrypt
 from itsdangerous import URLSafeTimedSerializer
 import logging
 import smtplib
+from werkzeug.exceptions import RequestEntityTooLarge
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -28,11 +28,14 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# HARDCODED CONFIGURATION
-app.secret_key = "GANTI_DENGAN_SECRET_KEY_YANG_AMAN_INI"
+# ---- HARDCODED (gunakan nilai dummy/placeholder yang aman) ----
+app.secret_key = "CHANGE_THIS_TO_A_SECURE_RANDOM_SECRET"
 GEMINI_API_KEY = "AIzaSyBlv6T1_IzO7rTXQKkQ1Y5vpGU08ZFZvyA"
 LUNO_API_KEY_ID="jnm42w8w23t8v"
 LUNO_API_KEY_SECRET="QSRtcDAysoiAs3IiRrDtqaXeO35SPzFMXU0niYUHNnc"
+
+# DEV flag: tampilkan detail error ke client (hanya untuk debugging lokal)
+SHOW_DETAILED_ERRORS = True
 
 # Konfigurasi Upload
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
@@ -44,13 +47,13 @@ PREMIUM_PRICE = 150000.0
 REWARD_RUMAH_SAKIT = 100000.0
 REWARD_DATA_AI = 200000.0
 
-# Konfigurasi Email dengan Gmail SMTP (HARDCODED)
+# Konfigurasi Email (gunakan App Password bila pakai Gmail)
 app.config.update(
     MAIL_SERVER='smtp.gmail.com',
-    MAIL_PORT=587,                # gunakan 587 untuk starttls()
-    MAIL_USERNAME='anandatechnologysolution@gmail.com',   # GANTI
-    MAIL_PASSWORD='@Viti412',       # GANTI (App Password 16 digit)
-    MAIL_SENDER='anandatechnologysolution@gmail.com',     # GANTI
+    MAIL_PORT=587,
+    MAIL_USERNAME='anandatechnologysolution@gmail.com',
+    MAIL_PASSWORD='@Viti412',
+    MAIL_SENDER='anandatechnologysolution@gmail.com',
 )
 s = URLSafeTimedSerializer(app.secret_key)
 
@@ -60,6 +63,9 @@ s = URLSafeTimedSerializer(app.secret_key)
 
 def send_email(subject, recipients, body):
     try:
+        if not (app.config['MAIL_USERNAME'] and app.config['MAIL_PASSWORD'] and app.config['MAIL_SENDER']):
+            logger.warning("Email config kosong; lewati pengiriman email.")
+            return False
         message = f"Subject: {subject}\nTo: {', '.join(recipients)}\nFrom: {app.config['MAIL_SENDER']}\n\n{body}"
         with smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT']) as server:
             server.starttls()
@@ -80,29 +86,17 @@ def check_password(plain_password: str, hashed_password: str):
 def jsonify_error(message: str, status_code: int = 400):
     return jsonify({"success": False, "error": message}), status_code
 
-
 def _extract_luno_address(resp):
-    """
-    Robustly extract deposit address from various Luno API response shapes.
-    Known shapes:
-      - {"address": "bc1....", "asset": "XBT", ...}
-      - {"receive_address": "0x...", ...}
-      - {"funding_address": {"address": "bc1..."}}  # hypothetical/nested
-      - {"addresses": [{"address": "..."}, ...]}
-    """
     try:
         if not isinstance(resp, dict):
             return None
-        # direct fields
         for key in ("address", "receive_address", "deposit_address"):
             if key in resp and resp[key]:
                 return resp[key]
-        # nested common shapes
         if "funding_address" in resp and isinstance(resp["funding_address"], dict):
             addr = resp["funding_address"].get("address")
             if addr:
                 return addr
-        # list shapes
         for list_key in ("addresses", "funding_addresses"):
             if list_key in resp and isinstance(resp[list_key], (list, tuple)) and resp[list_key]:
                 first = resp[list_key][0]
@@ -113,6 +107,7 @@ def _extract_luno_address(resp):
         return None
     except Exception:
         return None
+
 def redirect_flash(message: str, category: str, anchor: str = None):
     flash(message, category)
     return redirect(url_for('home') + f"#{anchor}" if anchor else url_for('home'))
@@ -138,20 +133,47 @@ def login_required(f):
                 return redirect_flash("Terjadi kesalahan server. Silakan login kembali.", "error", "login-section")
     return decorated_function
 
-def validate_image_file(file):
-    if not file or not file.filename:
-        return False, "Tidak ada file yang dipilih"
-    if not file.filename.lower().endswith(('.jpg', '.jpeg', '.png')):
-        return False, "Tipe file tidak valid. Hanya .jpg, .jpeg, .png"
-    file.seek(0, os.SEEK_END)
-    file_size = file.tell()
-    file.seek(0)
-    if file_size > 10 * 1024 * 1024:
-        return False, "Ukuran file terlalu besar. Maksimal 10MB"
+def _get_file_size(fs):
+    for attr in ("stream",):
+        s = getattr(fs, attr, None)
+        if s and hasattr(s, "seek") and hasattr(s, "tell"):
+            try:
+                pos = s.tell()
+                s.seek(0, os.SEEK_END)
+                size = s.tell()
+                s.seek(pos)
+                return size
+            except Exception:
+                pass
     try:
-        img = Image.open(file)
+        pos = fs.tell()
+        fs.seek(0, os.SEEK_END)
+        size = fs.tell()
+        fs.seek(pos)
+        return size
+    except Exception:
+        return None
+
+def validate_image_file(file):
+    if not file or not getattr(file, "filename", ""):
+        return False, "Tidak ada file yang dipilih"
+
+    filename = file.filename.lower().strip()
+    allowed_ext = ('.jpg', '.jpeg', '.png')
+    if not any(filename.endswith(ext) for ext in allowed_ext):
+        return False, "Tipe file tidak valid. Hanya .jpg, .jpeg, .png"
+
+    size = _get_file_size(file)
+    if size is None:
+        return False, "Gagal membaca ukuran file"
+    if size > app.config['MAX_CONTENT_LENGTH']:
+        return False, f"Ukuran file terlalu besar. Maksimal {app.config['MAX_CONTENT_LENGTH'] // (1024*1024)}MB"
+
+    try:
+        file.stream.seek(0)
+        img = Image.open(file.stream)
         img.verify()
-        file.seek(0)
+        file.stream.seek(0)
         return True, "File valid"
     except Exception:
         return False, "File bukan gambar yang valid"
@@ -171,9 +193,8 @@ def is_premium_user(user):
 
 db = Database()
 
-# --- MySQL (PyMySQL) ---
 try:
-    import pymysql  # ensure driver present
+    import pymysql
     db.bind(
         provider='mysql',
         host="localhost",
@@ -187,7 +208,6 @@ except Exception as e:
     logger.error(f"Database connection error (MySQL): {str(e)}")
     db.bind(provider='sqlite', filename='database.sqlite', create_db=True)
 
-# --- Entities ---
 class User(db.Entity):
     UserID = PrimaryKey(int, auto=True)
     NamaUser = Required(str)
@@ -253,9 +273,11 @@ def detect_disease(image_path: str):
         image = Image.open(image_path).convert("RGB").resize((224, 224))
         image_array = (np.asarray(image, dtype=np.float32).reshape(1, 224, 224, 3) / 127.5) - 1
         prediction = model.predict(image_array)
-        index = int(np.argmax(prediction))
+        import numpy as _np
+        index = int(_np.argmax(prediction))
         confidence = float(prediction[0][index])
-        return {"class_name": class_names[index].strip(), "confidence": confidence}
+        cname = class_names[index].strip() if 0 <= index < len(class_names) else f"Class_{index}"
+        return {"class_name": cname, "confidence": confidence}
     except Exception as e:
         logger.error(f"Error saat mendeteksi penyakit: {e}")
         return {"class_name": "Error processing image", "confidence": 0.0}
@@ -373,21 +395,18 @@ def reset_password(token):
             return redirect_flash("Terjadi kesalahan saat mereset password.", "error")
     return render_template("reset_password.html", token=token)
 
-# --- Tukar Gambar dengan Reward ---
+# --- Tukar Gambar + Analisis ---
 @app.route("/exchange", methods=["POST"])
 @login_required
 @db_session
 def exchange(user):
     try:
         file = request.files.get("image")
+        if file is None:
+            return jsonify_error("Input file 'image' tidak ditemukan di form.")
         is_valid, message = validate_image_file(file)
         if not is_valid:
             return jsonify_error(message)
-
-        # Simpan file
-        filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
-        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(image_path)
 
         tujuan = request.form.get("tujuan", "").strip().lower()
         if tujuan in ("dokter", "rumah_sakit"):
@@ -401,29 +420,83 @@ def exchange(user):
         else:
             return jsonify_error("Tujuan penukaran tidak valid.")
 
-        # Catat Exchange dan update saldo
-        Exchange(User=user, Tujuan=tujuan_text, Gambar=filename, Diagnosa="Upload ke exchange", Tanggal=datetime.now(), SaldoReward=reward)
+        original_name = secure_filename(file.filename)
+        filename = f"{uuid.uuid4().hex}_{original_name}"
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(image_path)
+
+        analysis = detect_disease(image_path)
+
+        Exchange(
+            User=user,
+            Tujuan=tujuan_text,
+            Gambar=filename,
+            Diagnosa=analysis.get("class_name") or "Upload ke exchange",
+            Tanggal=datetime.now(),
+            SaldoReward=reward
+        )
         user.Saldo += reward
 
         return jsonify({
             "success": True,
             "message": f"Gambar ditukar! Saldo +IDR {reward:,.2f}",
             "new_balance": user.Saldo,
-            "image_path": url_for('static', filename=f'uploads/{filename}'),
+            "image_path": url_for('static', filename=f'uploads/{filename}', _external=True),
             "tujuan_display": tujuan_display,
-            "reward_amount": reward
+            "reward_amount": reward,
+            "analysis": {
+                "class_name": analysis.get("class_name", "N/A"),
+                "confidence": analysis.get("confidence", 0.0)
+            }
         })
     except Exception as e:
-        logger.error(f"Exchange error: {str(e)}")
-        # Pesan sesuai keluhan "Terjadi kesalahan koneksi"
-        return jsonify_error("Terjadi kesalahan koneksi", 500)
+        logger.exception("Exchange error")
+        msg = f"Gagal memproses permintaan: {e.__class__.__name__}: {e}" if SHOW_DETAILED_ERRORS else "Gagal memproses permintaan."
+        return jsonify_error(msg, 500)
+
+# --- Endpoint optional untuk tombol "Mulai Analisis" ---
+@app.route("/analyze-image", methods=["POST"])
+@login_required
+def analyze_image():
+    try:
+        file = request.files.get("image")
+        existing_path = request.form.get("image_path", "").strip()
+
+        if file:
+            is_valid, message = validate_image_file(file)
+            if not is_valid:
+                return jsonify_error(message)
+            original_name = secure_filename(file.filename)
+            filename = f"{uuid.uuid4().hex}_{original_name}"
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(image_path)
+        elif existing_path:
+            if existing_path.startswith("http"):
+                basename = existing_path.split("/")[-1]
+                image_path = os.path.join(app.config['UPLOAD_FOLDER'], basename)
+            else:
+                basename = os.path.basename(existing_path)
+                image_path = os.path.join(app.config['UPLOAD_FOLDER'], basename)
+            if not os.path.isfile(image_path):
+                return jsonify_error("Gambar tidak ditemukan di server.")
+        else:
+            return jsonify_error("Mohon unggah gambar atau sertakan image_path.")
+
+        analysis = detect_disease(image_path)
+        return jsonify({
+            "success": True,
+            "image_path": url_for('static', filename=f'uploads/{os.path.basename(image_path)}', _external=True),
+            "analysis": analysis
+        })
+    except Exception as e:
+        logger.exception("Analyze error")
+        msg = f"Gagal menganalisis gambar: {e.__class__.__name__}: {e}" if SHOW_DETAILED_ERRORS else "Gagal menganalisis gambar."
+        return jsonify_error(msg, 500)
 
 @app.route("/activate_premium", methods=["POST"])
 @login_required
 @db_session
 def activate_premium(user):
-    # Aktifkan paket premium dengan memotong saldo pengguna sebesar PREMIUM_PRICE.
-    # Return JSON agar mudah ditangani via AJAX.
     try:
         if user.PaketAktif:
             return jsonify_error("Paket sudah aktif", 400)
@@ -442,8 +515,8 @@ def activate_premium(user):
         })
     except Exception as e:
         logger.error(f"Activate premium error: {str(e)}")
-        return jsonify_error("Terjadi kesalahan saat mengaktifkan paket premium.", 500)
-
+        msg = f"Terjadi kesalahan saat mengaktifkan paket premium: {e.__class__.__name__}: {e}" if SHOW_DETAILED_ERRORS else "Terjadi kesalahan saat mengaktifkan paket premium."
+        return jsonify_error(msg, 500)
 
 @app.route("/topup", methods=["POST"])
 @login_required
@@ -476,27 +549,28 @@ def topup(user):
             asset = "XBT" if metode == "btc" else "ETH"
             try:
                 from luno_python.client import Client
+                if not (LUNO_API_KEY_ID and LUNO_API_KEY_SECRET):
+                    raise RuntimeError("Luno credential kosong")
                 client = Client(api_key_id=LUNO_API_KEY_ID, api_key_secret=LUNO_API_KEY_SECRET)
 
-                # 1) Try get funding address
                 try:
                     resp = client.get_funding_address(asset=asset)
-                    address = _extract_luno_address(resp if isinstance(resp, dict) else getattr(resp, "__dict__", {}))
+                    payload = resp if isinstance(resp, dict) else getattr(resp, "__dict__", {})
+                    address = _extract_luno_address(payload)
                 except Exception as e:
                     logger.warning(f"Luno get_funding_address error: {e}")
 
-                # 2) If none, try create funding address
                 if not address:
                     try:
                         resp = client.create_funding_address(asset=asset)
-                        address = _extract_luno_address(resp if isinstance(resp, dict) else getattr(resp, "__dict__", {}))
+                        payload = resp if isinstance(resp, dict) else getattr(resp, "__dict__", {})
+                        address = _extract_luno_address(payload)
                     except Exception as e:
                         logger.warning(f"Luno create_funding_address error: {e}")
 
                 if address:
                     mode = "wallet"
                 else:
-                    # keep manual fallback
                     import uuid as _uuid
                     reference_code = f"TOPUP-{asset}-{_uuid.uuid4().hex[:10].upper()}"
                     instructions = "Alamat wallet tidak tersedia dari Luno. Gunakan Kode Referensi ini dan hubungi admin untuk konfirmasi deposit."
@@ -520,17 +594,40 @@ def topup(user):
             reference_code = f"TOPUP-BANK-{_uuid.uuid4().hex[:10].upper()}"
             instructions = "Silakan transfer ke rekening perusahaan dan cantumkan Kode Referensi pada berita/notes transfer."
 
-        # Catat TopUp ke database (request)
         TopUp(User=user, Jumlah=jumlah, Metode=metode.upper(), Tanggal=datetime.now())
 
         return jsonify({
             "success": True,
             "message": "Permintaan Top Up dibuat.",
             "mode": mode,
-            "address": address,                 # non-null jika mode = wallet
-            "reference_code": reference_code,   # non-null jika mode = manual
+            "address": address,
+            "reference_code": reference_code,
             "instructions": instructions
         })
     except Exception as e:
         logger.error(f"Topup error: {str(e)}")
-        return jsonify_error("Gagal membuat alamat deposit. Silakan coba lagi atau pilih metode lain.", 500)
+        msg = f"Gagal membuat alamat deposit: {e.__class__.__name__}: {e}" if SHOW_DETAILED_ERRORS else "Gagal membuat alamat deposit. Silakan coba lagi atau pilih metode lain."
+        return jsonify_error(msg, 500)
+
+# =========================
+# Error Handlers
+# =========================
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_large_file(e):
+    return jsonify_error("File terlalu besar. Maksimal 10MB."), 413
+
+@app.errorhandler(Exception)
+def handle_general_error(e):
+    wants_json = request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html
+    if wants_json:
+        logger.exception("Unhandled error")
+        msg = f"Kesalahan tak terduga di server: {e.__class__.__name__}: {e}" if SHOW_DETAILED_ERRORS else "Kesalahan tak terduga di server."
+        return jsonify_error(msg), 500
+    raise e
+
+# =========================
+# App Runner (optional for local)
+# =========================
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5001, debug=True)
