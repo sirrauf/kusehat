@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KuSehat - App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+        <div class="text-center">
+            <svg class="mx-auto h-12 w-12 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z">
+                </path>
+            </svg>
+            <h2 class="mt-6 text-3xl font-bold text-gray-900">Selamat Datang di KuSehat</h2>
+            <p class="mt-2 text-sm text-gray-600">Solusi kesehatan dalam genggaman Anda</p>
+        </div>
+        <div class="bg-white py-8 px-6 shadow-xl rounded-xl">
+            <!-- Flash Messages -->
+            <div id="flash-messages" class="mb-4 space-y-2">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                <div
+                    class="fade-in p-4 rounded-lg text-sm font-medium {% if category == 'error' %}bg-red-100 text-red-700{% else %}bg-green-100 text-green-700{% endif %}">
+                    {{ message }}
+                </div>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
+            </div>
+
+            <script>
+                setTimeout(function () {
+                    var flash = document.getElementById('flash-messages');
+                    if (flash) {
+                        flash.style.opacity = '0';
+                        setTimeout(function () {
+                            flash.style.display = 'none';
+                        }, 500);
+                    }
+                }, 5000);
+            </script>
+            <div class="flex mb-6 bg-gray-100 p-1 rounded-lg">
+                <button id="login-tab"
+                    class="flex-1 py-2 px-4 text-sm font-medium rounded-md bg-white text-indigo-600 shadow-sm transition-all">Masuk</button>
+                <button id="register-tab"
+                    class="flex-1 py-2 px-4 text-sm font-medium text-gray-500 rounded-md hover:text-gray-700 transition-all">Daftar</button>
+            </div>
+
+            <form id="login-form" action="{{ url_for('login') }}" method="POST" class="space-y-6">
+                <div><label for="login-email" class="block text-sm font-medium text-gray-700">Email</label><input
+                        type="email" id="login-email" name="email" required
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div><label for="login-password" class="block text-sm font-medium text-gray-700">Password</label><input
+                        type="password" id="login-password" name="password" required
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <button type="submit"
+                    class="w-full py-2.5 px-4 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all">Masuk</button>
+                <p class="text-center text-sm text-gray-600"><a href="#" id="forgot-password-link"
+                        class="font-medium text-indigo-600 hover:text-indigo-500">Lupa password?</a></p>
+            </form>
+
+            <form id="register-form" action="{{ url_for('register') }}" method="POST" class="space-y-6 hidden">
+                <div><label for="register-nama" class="block text-sm font-medium text-gray-700">Nama
+                        Lengkap</label><input type="text" id="register-nama" name="nama" required
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div><label for="register-email" class="block text-sm font-medium text-gray-700">Email</label><input
+                        type="email" id="register-email" name="email" required
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div><label for="register-password"
+                        class="block text-sm font-medium text-gray-700">Password</label><input type="password"
+                        id="register-password" name="password" required minlength="6"
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <button type="submit"
+                    class="w-full py-2.5 px-4 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all">Daftar
+                    Sekarang</button>
+            </form>
+
+            <form id="forgot-form" action="{{ url_for('forgot_password') }}" method="POST" class="space-y-6 hidden">
+                <p class="text-sm text-gray-600">Masukkan email Anda, dan kami akan mengirimkan tautan untuk mereset
+                    password.</p>
+                <div><label for="forgot-email" class="block text-sm font-medium text-gray-700">Email</label><input
+                        type="email" id="forgot-email" name="email" required
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <button type="submit"
+                    class="w-full py-2.5 px-4 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all">Kirim
+                    Tautan Reset</button>
+                <p class="text-center text-sm text-gray-600"><a href="#" id="back-to-login"
+                        class="font-medium text-indigo-600 hover:text-indigo-500">Kembali ke Masuk</a></p>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            const loginTab = $('#login-tab'); const registerTab = $('#register-tab');
+            const loginForm = $('#login-form'); const registerForm = $('#register-form'); const forgotForm = $('#forgot-form');
+            const forgotLink = $('#forgot-password-link'); const backToLogin = $('#back-to-login');
+
+            function showLogin() {
+                loginTab.addClass('bg-white text-indigo-600 shadow-sm').removeClass('text-gray-500');
+                registerTab.removeClass('bg-white text-indigo-600 shadow-sm').addClass('text-gray-500');
+                loginForm.show();
+                registerForm.hide();
+                forgotForm.hide();
+            }
+
+            function showRegister() {
+                registerTab.addClass('bg-white text-indigo-600 shadow-sm').removeClass('text-gray-500');
+                loginTab.removeClass('bg-white text-indigo-600 shadow-sm').addClass('text-gray-500');
+                registerForm.show();
+                loginForm.hide();
+                forgotForm.hide();
+            }
+
+            function showForgot() {
+                forgotForm.show();
+                loginForm.hide();
+                registerForm.hide();
+            }
+
+            loginTab.on('click', showLogin);
+            registerTab.on('click', showRegister);
+            forgotLink.on('click', (e) => { e.preventDefault(); showForgot(); });
+            backToLogin.on('click', (e) => { e.preventDefault(); showLogin(); });
+        });
+    </script>
+</body>
+
+</html>

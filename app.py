@@ -1,42 +1,189 @@
+# =========================
+# Import Libraries
+# =========================
 import os
 import uuid
 import numpy as np
 import requests
-from datetime import datetime, date # Ditambahkan date
-from flask import Flask, render_template, request, session, redirect, url_for
+from datetime import datetime, timedelta, date
+from functools import wraps
+
+from flask import Flask, render_template, request, session, redirect, url_for, flash, jsonify
 from werkzeug.utils import secure_filename
-from pony.orm import Database, Required, Optional, PrimaryKey, Set, db_session
-from luno_python.client import Client
+from pony.orm import Database, Required, Optional, PrimaryKey, Set, db_session, select
 from PIL import Image
+import bcrypt
+from itsdangerous import URLSafeTimedSerializer
+import logging
+import smtplib
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # =========================
-# Setup
+# Konfigurasi Aplikasi & Constants
 # =========================
+
 app = Flask(__name__)
-app.secret_key = "change_me"
+
+# HARDCODED CONFIGURATION - PINDAHIN KE ENVIRONMENT VARIABLES KALO MAU
+app.secret_key = "GANTI_DENGAN_SECRET_KEY_YANG_AMAN_INI"
+GEMINI_API_KEY = "AIzaSyBlv6T1_IzO7rTXQKkQ1Y5vpGU08ZFZvyA"
+LUNO_API_KEY_ID = "jnm42w8w23t8v"
+LUNO_API_KEY_SECRET = "QSRtcDAysoiAs3IiRrDtqaXeO35SPzFMXU0niYUHNnc"
+
+# Konfigurasi Upload
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-ENABLE_AI = True
-GEMINI_API_KEY = "AIzaSyBlv6T1_IzO7rTXQKkQ1Y5vpGU08ZFZvyA"   # Gemini API Key
+# Harga Paket & Reward
+PREMIUM_PRICE = 150000.0
+REWARD_RUMAH_SAKIT = 100000.0
+REWARD_DATA_AI = 200000.0
 
-# --- [BARU] Konfigurasi Kunci API Luno ---
-# Ganti dengan Kunci API Luno Anda yang sebenarnya
-LUNO_API_KEY_ID="jnm42w8w23t8v"
-LUNO_API_KEY_SECRET="QSRtcDAysoiAs3IiRrDtqaXeO35SPzFMXU0niYUHNnc"
-
-
-# =========================
-# Database
-# =========================
-db = Database()
-db.bind(
-    provider='mysql',
-    host="localhost",
-    user="root",
-    passwd="",        # ganti sesuai konfigurasi MySQL kamu
-    db="kusehat"
+# CATATAN: Ganti konfigurasi di bawah dengan milik Anda.
+# 1. Ganti 'email_pribadi_anda@gmail.com' dengan alamat Gmail Anda.
+# 2. Ganti 'xxxxxxxxxxxxxxxx' dengan App Password 16 karakter yang dibuat di Google Account.
+#    JANGAN gunakan password Gmail utama Anda!
+#
+# Konfigurasi Email dengan Gmail SMTP (HARDCODED)
+app.config.update(
+    MAIL_SERVER='smtp.gmail.com',
+    MAIL_PORT=587,  # Port untuk TLS
+    MAIL_USERNAME='email_pribadi_anda@gmail.com', # <-- GANTI INI
+    MAIL_PASSWORD='xxxxxxxxxxxxxxxx',            # <-- GANTI INI (Pake App Password jangan password gmail pribadi)
+    MAIL_SENDER='email_pribadi_anda@gmail.com', # <-- GANTI INI
 )
+s = URLSafeTimedSerializer(app.secret_key)
+
+# =========================
+# Utilitas & Helper Functions
+# =========================
+
+def send_email(subject, recipients, body):
+    """Mengirim email menggunakan smtplib dengan Gmail (TLS)."""
+    try:
+        message = f"""\
+        Subject: {subject}
+        To: {', '.join(recipients)}
+        From: {app.config['MAIL_SENDER']}
+
+        {body}"""
+
+        # Gunakan context manager untuk koneksi SMTP agar otomatis ditutup
+        with smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT']) as server:
+            # Amankan koneksi dengan enkripsi TLS
+            server.starttls()
+            server.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
+            server.sendmail(app.config['MAIL_SENDER'], recipients, message)
+
+        logger.info(f"Email sent to {recipients}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to send email: {str(e)}")
+        return False
+
+def hash_password(password: str):
+    """Hash password menggunakan bcrypt."""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def check_password(plain_password: str, hashed_password: str):
+    """Verifikasi password dengan hash bcrypt."""
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+
+def jsonify_error(message: str, status_code: int = 400):
+    """Mengembalikan respons error JSON."""
+    return jsonify({"success": False, "error": message}), status_code
+
+def redirect_flash(message: str, category: str, anchor: str = None):
+    """Flash message dan redirect ke anchor tertentu."""
+    flash(message, category)
+    return redirect(url_for('home') + f"#{anchor}" if anchor else url_for('home'))
+
+def login_required(f):
+    """Decorator untuk mengecek sesi login dan menambahkan objek user ke kwargs."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user_id" not in session:
+            if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
+                return jsonify_error("Unauthorized. Please log in.", 401)
+            return redirect_flash("Anda harus login terlebih dahulu.", "error", "login-section")
+        
+        with db_session:
+            try:
+                user = User.get(UserID=session["user_id"])
+                if not user:
+                    session.clear()
+                    return redirect_flash("Sesi tidak valid, silakan login lagi.", "error", "login-section")
+                
+                # Tambahkan objek user ke fungsi route
+                kwargs['user'] = user
+                return f(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Error in login_required decorator: {str(e)}")
+                session.clear()
+                return redirect_flash("Terjadi kesalahan server. Silakan login kembali.", "error", "login-section")
+    return decorated_function
+
+def validate_image_file(file):
+    """Validasi file gambar yang diunggah."""
+    if not file or not file.filename:
+        return False, "Tidak ada file yang dipilih"
+    
+    if not file.filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+        return False, "Tipe file tidak valid. Hanya .jpg, .jpeg, .png"
+    
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+    
+    if file_size > 10 * 1024 * 1024:
+        return False, "Ukuran file terlalu besar. Maksimal 10MB"
+    
+    try:
+        img = Image.open(file)
+        img.verify()
+        file.seek(0)
+        return True, "File valid"
+    except Exception:
+        return False, "File bukan gambar yang valid"
+
+def get_user_upload_count(user, today_date):
+    """Menghitung jumlah upload user untuk deteksi pada hari ini."""
+    return select(
+        ex for ex in user.exchanges 
+        if ex.Tujuan == 'deteksi' and ex.Tanggal.date() == today_date
+    ).count()
+
+def is_premium_user(user):
+    """Memeriksa apakah user memiliki akses premium."""
+    return user.PaketAktif
+
+# =========================
+# Database Setup & Models
+# =========================
+
+db = Database()
+try:
+    # PAKE SERVICE DARI NEON UNTUK POSTGRESQL, COCOK UNTUK PRODUKSI 
+    db.bind(
+        provider='postgres',
+        host='ep-nameless-salad-a1omfeby-pooler.ap-southeast-1.aws.neon.tech',
+        user='neondb_owner',
+        password='npg_EjGr1Yw9JbNR',
+        database='kusehat',
+        port=5432,
+        sslmode='require'
+    )
+    logger.info("Database connected successfully")
+
+except Exception as e:
+    logger.error(f"Database connection error: {str(e)}")
+    # Fallback ke SQLite jika Neon gagal, jaga-jaga aja!
+    db.bind(provider='sqlite', filename='database.sqlite', create_db=True)
 
 class User(db.Entity):
     _table_ = "user"
@@ -47,7 +194,9 @@ class User(db.Entity):
     Register_Date = Required(datetime)
     Login_Date = Optional(datetime)
     Saldo = Required(float, default=0.0)
-    PaketAktif = Required(bool, default=False)   # 🔑 paket seumur hidup
+    PaketAktif = Required(bool, default=False)
+    reset_token = Optional(str)
+    reset_token_expiration = Optional(datetime)
     topups = Set("TopUp")
     exchanges = Set("Exchange")
 
@@ -72,8 +221,9 @@ class Exchange(db.Entity):
 db.generate_mapping(create_tables=True)
 
 # =========================
-# AI Keras (lazy load)
+# AI Model & Analysis Functions
 # =========================
+
 model = None
 class_names = []
 
@@ -81,250 +231,489 @@ def load_ai_model():
     global model, class_names
     if model is not None:
         return
+
     try:
         from keras.models import load_model
-        model_path = "model/keras_Model.h5"
-        labels_path = "model/labels.txt"
+        model_path, labels_path = "model/keras_model.h5", "model/labels.txt"
         if not (os.path.isfile(model_path) and os.path.isfile(labels_path)):
+            logger.warning("Model files tidak ditemukan")
             return
         _model = load_model(model_path, compile=False)
+
         with open(labels_path, "r") as f:
             _class_names = [line.strip() for line in f]
         model, class_names = _model, _class_names
-    except Exception as e:
-        print("Gagal load model AI:", str(e))
+        logger.info("Model AI berhasil dimuat.")
 
-def detect_disease(image_path):
-    """Deteksi penyakit menggunakan model AI"""
+    except Exception as e:
+        logger.error(f"Gagal load model AI: {e}")
+
+def detect_disease(image_path: str):
     load_ai_model()
     if model is None:
-        return {"class_name": "Tidak diketahui", "confidence": 0.0}
+        return {"class_name": "Model tidak tersedia", "confidence": 0.0}
 
-    image = Image.open(image_path).convert("RGB").resize((224, 224))
-    image = np.asarray(image, dtype=np.float32).reshape(1, 224, 224, 3)
-    image = (image / 127.5) - 1
-    prediction = model.predict(image)
-    index = int(np.argmax(prediction))
-    class_name = class_names[index].strip()
-    confidence = float(prediction[0][index])
-    return {"class_name": class_name, "confidence": confidence}
+    try:
+        image = Image.open(image_path).convert("RGB").resize((224, 224))
+        image_array = (np.asarray(image, dtype=np.float32).reshape(1, 224, 224, 3) / 127.5) - 1
+        prediction = model.predict(image_array)
+        index = int(np.argmax(prediction))
+        confidence = float(prediction[0][index])
+        return {"class_name": class_names[index].strip(), "confidence": confidence}
 
-def analyze_with_gemini(disease_name, confidence):
-    """Analisis lanjutan menggunakan Gemini API"""
+    except Exception as e:
+        logger.error(f"Error saat mendeteksi penyakit: {e}")
+        return {"class_name": "Error processing image", "confidence": 0.0}
+
+def analyze_with_gemini(disease_name: str, confidence: float):
     if not GEMINI_API_KEY:
-        return "⚠️ GEMINI_API_KEY belum diatur"
+        return "GEMINI_API_KEY belum diatur."
 
-    prompt = f"""
-    Terdeteksi penyakit bernama: {disease_name}
-    dengan tingkat deteksi penyakit {confidence:.2%}.
-
-    Tolong berikan analisis medis dengan format berikut:
-    1. Deskripsi singkat penyakit ini
-    2. Obat dan tindakan medis seperti apa
-    3. Cara penyembuhan secara medis
-    4. Kapan harus ke dokter
-    """
+    disease_name = disease_name.replace('"', '').replace("'", "").replace(";", "").replace(":", "").replace("\\", "")
+    prompt = (
+        f"Terdeteksi penyakit: {disease_name} ({confidence:.2%}). "
+        "Berikan analisis medis: 1. Deskripsi 2. Obat/tindakan 3. Cara penyembuhan 4. Kapan ke dokter."
+    )
 
     try:
         response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}",
             json={"contents": [{"parts": [{"text": prompt}]}]},
             headers={"Content-Type": "application/json"}
         )
         if response.ok:
             data = response.json()
-            return data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "❌ Tidak ada hasil.")
-        else:
-            return f"❌ Error Gemini: {response.text}"
+            if "candidates" in data and len(data["candidates"]) > 0:
+                content = data["candidates"][0].get("content", {})
+                if "parts" in content and len(content["parts"]) > 0:
+                    return content["parts"][0].get("text", "Tidak ada hasil.")
+            return "Format respons tidak valid dari Gemini"
+        return f"Error Gemini: {response.text}"
+
     except Exception as e:
-        return f"❌ Gagal akses Gemini: {str(e)}"
+        logger.error(f"Gagal akses Gemini: {str(e)}")
+        return f"Gagal akses Gemini: {str(e)}"
 
 # =========================
-# Routes
+# Routes / Endpoints
 # =========================
-@app.route("/", methods=["GET", "POST"])
+
+@app.route("/")
 @db_session
 def home():
-    diagnosis = ""
-    image_path = ""
-    user = None
     if "user_id" in session:
         user = User.get(UserID=session["user_id"])
-
-    if request.method == "POST" and "image" in request.files:
         if not user:
-            return "❌ Harus login dulu."
+            session.clear()
+            return render_template("auth.html")
+        
+        today_date = date.today()
+        upload_count_today = get_user_upload_count(user, today_date)
+        
+        return render_template("main.html", user=user, upload_count_today=upload_count_today)
+    return render_template("auth.html")
 
-        # 🔑 cek paket user
-        if not user.PaketAktif:
-            if user.Saldo < 150000:
-                return "❌ Saldo tidak cukup untuk aktivasi paket (Rp 150.000)"
-            user.Saldo -= 150000
-            user.PaketAktif = True   # aktifkan paket selamanya
-
-        file = request.files["image"]
-        if file and file.filename.lower().endswith((".jpg", ".jpeg", ".png")):
-            filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
-            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(image_path)
-
-            # Step 1: deteksi AI
-            result = detect_disease(image_path)
-            disease_name = result["class_name"]
-            confidence = result["confidence"]
-
-            # Step 2: analisis Gemini
-            gemini_result = analyze_with_gemini(disease_name, confidence)
-
-            diagnosis = f"""
-            🦠 Penyakit terdeteksi: {disease_name}
-            📊 Tingkat deteksi penyakit: {confidence:.2%}
-
-            📋 Analisis Gemini:
-            {gemini_result}
-            """
-
-    # [DIUBAH] Menambahkan 'today' ke konteks template
-    return render_template("index.html", diagnosis=diagnosis, image_path=image_path, user=user, today=date.today())
-
-@app.route("/register", methods=["POST"])
+@app.route("/upload", methods=["POST"])
 @db_session
-def register():
-    nama, email, password = request.form.get("nama"), request.form.get("email"), request.form.get("password")
-    if User.get(Email=email):
-        return "❌ Email sudah terdaftar."
-    User(NamaUser=nama, Email=email, Password=password, Register_Date=datetime.now())
-    return "✅ Registrasi berhasil"
+@login_required
+def upload_analyze(user):
+    """Handle upload dari dashboard (form submit)."""
+    method = request.form.get("method", "")
+    if method != "upload":
+        return redirect(url_for('home'))
+    
+    file = request.files.get('image')
+    is_valid, message = validate_image_file(file)
+    if not is_valid:
+        flash(message, "error")
+        return redirect(url_for('home'))
+    
+    today_date = date.today()
+    upload_count_today = get_user_upload_count(user, today_date)
+    
+    if not is_premium_user(user):
+        if upload_count_today >= 3:
+            flash("Anda telah mencapai batas 3 analisis gratis hari ini. Silakan upgrade ke Premium untuk analisis tanpa batas.", "error")
+            return redirect(url_for('home'))
+
+    try:
+        filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(image_path)
+        
+        result = detect_disease(image_path)
+        diagnosis = (
+            f"Penyakit: {result['class_name']} ({result['confidence']:.2%})\n\n"
+            f"Analisis Gemini:\n{analyze_with_gemini(result['class_name'], result['confidence'])}"
+        )
+        
+        Exchange(
+            User=user,
+            Tujuan='deteksi',
+            Gambar=filename,
+            Diagnosa=diagnosis,
+            Tanggal=datetime.now(),
+            SaldoReward=0.0
+        )
+        
+        return render_template("main.html", user=user,
+                               upload_count_today=upload_count_today + 1,
+                               diagnosis=diagnosis, image_path=filename)
+
+    except Exception as e:
+        logger.error(f"Upload analyze error: {str(e)}")
+        flash("Terjadi kesalahan saat memproses gambar.", "error")
+        return redirect(url_for('home'))
 
 @app.route("/login", methods=["POST"])
 @db_session
 def login():
-    email, password = request.form.get("email"), request.form.get("password")
-    user = User.get(Email=email, Password=password)
-    if user:
-        session["user_id"] = user.UserID
-        return redirect(url_for("home"))
-    return "❌ Email/Password salah"
+    try:
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+        
+        if not email or not password:
+            return redirect_flash("Email dan password harus diisi.", "error", "login-section")
+            
+        user = User.get(Email=email)
+        if user and check_password(password, user.Password):
+            session["user_id"] = user.UserID
+            user.Login_Date = datetime.now()
+            return redirect_flash("Login berhasil!", "success")
+        return redirect_flash("Email atau Password salah.", "error", "login-section")
+
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}")
+        return redirect_flash("Terjadi kesalahan saat login.", "error", "login-section")
+
+@app.route("/register", methods=["POST"])
+@db_session
+def register():
+    try:
+        form_data = {k: v.strip() for k, v in request.form.items() if v}
+        if not all(k in form_data for k in ("nama", "email", "password")):
+            return redirect_flash("Semua field harus diisi.", "error", "register-section")
+        if User.exists(Email=form_data['email']):
+            return redirect_flash("Email sudah terdaftar.", "error", "register-section")
+        if len(form_data['password']) < 6:
+            return redirect_flash("Password minimal 6 karakter.", "error", "register-section")
+        
+        User(
+            NamaUser=form_data['nama'],
+            Email=form_data['email'],
+            Password=hash_password(form_data['password']), 
+            Register_Date=datetime.now()
+        )
+        return redirect_flash("Registrasi berhasil, silakan login.", "success", "login-section")
+
+    except Exception as e:
+        logger.error(f"Registration error: {str(e)}")
+        return redirect_flash("Terjadi kesalahan saat registrasi.", "error", "register-section")
 
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("home"))
+    return redirect_flash("Anda telah logout.", "success")
 
-# --- [BARU] Route untuk Top Up ---
-@app.route("/topup", methods=["POST"])
+@app.route("/forgot-password", methods=["POST"])
 @db_session
-def topup():
-    # 1. Pastikan user sudah login
-    if "user_id" not in session:
-        return redirect(url_for("home"))
-
-    user = User.get(UserID=session["user_id"])
-    if not user:
-        session.clear()
-        return redirect(url_for("home"))
-
-    # 2. Ambil data dari form
+def forgot_password():
     try:
-        jumlah = float(request.form.get("jumlah"))
-        metode = request.form.get("metode")
-    except (ValueError, TypeError):
-        return render_template("index.html", user=user, section="topup", topup_error="Jumlah top up tidak valid.", today=date.today())
+        email = request.form.get("email", "").strip()
+        if not email:
+            return redirect_flash("Email harus diisi.", "error", "login-section")
+            
+        user = User.get(Email=email)
+        if user:
+            token = s.dumps(user.Email, salt='password-reset-salt')
+            user.reset_token = token
+            user.reset_token_expiration = datetime.now() + timedelta(hours=1)
 
-    # 3. Tentukan aset kripto berdasarkan metode
-    #    Catatan: Luno menggunakan 'XBT' untuk Bitcoin
-    asset = "XBT" if metode == "btc" else "ETH"
+            reset_url = url_for('reset_password', token=token, _external=True)
+            
+            email_body = f"""Halo {user.NamaUser},
 
-    topup_address = None
-    topup_error = None
+            Kami menerima permintaan untuk mereset password akun Anda. Klik tautan berikut untuk membuat password baru:
 
-    try:
-        # 4. Inisialisasi Luno Client dan dapatkan alamat deposit
-        if not LUNO_API_KEY_ID or not LUNO_API_KEY_SECRET or LUNO_API_KEY_ID == "YOUR_LUNO_API_KEY_ID":
-            raise Exception("Kunci API Luno belum diatur di server.")
+            {reset_url}
 
-        client = Client(api_key_id=LUNO_API_KEY_ID, api_key_secret=LUNO_API_KEY_SECRET)
+            Tautan ini akan kadaluarsa dalam 1 jam untuk keamanan akun Anda.
 
-        # Coba dapatkan alamat yang sudah ada
-        funding_address = client.get_funding_address(asset=asset)
-        topup_address = funding_address.get('address')
+            Jika Anda tidak meminta reset password, abaikan email ini.
 
-        # Jika tidak ada, buat alamat baru
-        if not topup_address:
-            new_address_info = client.create_funding_address(asset=asset)
-            topup_address = new_address_info.get('address')
-            if not topup_address:
-                raise Exception("Gagal mendapatkan atau membuat alamat deposit dari Luno.")
+            Terima kasih,
+            Tim KuSehat
+            """
+            send_email("Reset Password - KuSehat", [user.Email], email_body)
 
-        # 5. Simpan transaksi ke database
-        TopUp(User=user, Jumlah=jumlah, Metode=metode.upper(), Tanggal=datetime.now())
+        return redirect_flash("Jika email Anda terdaftar, instruksi reset password telah dikirim.", "success", "login-section")
 
     except Exception as e:
-        topup_error = f"Terjadi kesalahan saat memproses top up: {e}"
+        logger.error(f"Forgot password error: {str(e)}")
+        return redirect_flash("Terjadi kesalahan saat memproses permintaan reset password.", "error", "login-section")
 
-    # 6. Tampilkan kembali halaman dengan hasil top up
-    return render_template("index.html",
-                           user=user,
-                           section="topup",
-                           topup_address=topup_address,
-                           topup_error=topup_error,
-                           today=date.today())
-
-# --- [BARU] Route untuk Update User ---
-@app.route("/update_user", methods=["POST"])
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
 @db_session
-def update_user():
-    if "user_id" not in session:
-        return "❌ Harus login dulu."
+def reset_password(token):
+    try:
+        email = s.loads(token, salt='password-reset-salt', max_age=3600)
 
-    user = User.get(UserID=session["user_id"])
-    if not user:
-        return "❌ User tidak ditemukan."
+    except Exception as e:
+        logger.error(f"Token validation error: {str(e)}")
+        return redirect_flash("Tautan reset tidak valid atau kadaluarsa.", "error", "login-section")
 
-    nama = request.form.get("nama")
-    email = request.form.get("email")
-    old_password = request.form.get("old_password")
-    new_password = request.form.get("new_password")
+    user = User.get(Email=email)
+    if not user or user.reset_token != token or user.reset_token_expiration < datetime.now():
+        return redirect_flash("Tautan reset tidak valid atau kadaluarsa.", "error", "login-section")
 
-    if user.Password != old_password:
-        return "❌ Password lama salah."
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+        if not password or not confirm:
+            return redirect_flash("Password tidak boleh kosong.", "error")
+        if password != confirm:
+            return redirect_flash("Password tidak cocok.", "error")
+        if len(password) < 6:
+            return redirect_flash("Password minimal 6 karakter.", "error")
 
-    existing_user = User.get(Email=email)
-    if existing_user and existing_user.UserID != user.UserID:
-        return "❌ Email sudah digunakan oleh akun lain."
+        try:
+            user.Password = hash_password(password)
+            # --- PERBAIKAN UTAMA ---
+            # Jangan set ke None untuk menghindari error database jika kolom adalah NOT NULL
+            # Gunakan string kosong dan atur waktu kedaluwarsa ke masa lalu
+            user.reset_token = "" 
+            user.reset_token_expiration = datetime.now() - timedelta(days=1)
+            
+            email_body = f"""Halo {user.NamaUser},
 
-    user.NamaUser = nama
-    user.Email = email
-    if new_password: # Hanya update jika password baru diisi
-        user.Password = new_password
+            Password akun Anda telah berhasil direset.
 
-    return redirect(url_for("home", section="dashboard"))
+            Anda sekarang dapat login dengan password baru Anda.
 
+            Jika Anda tidak mereset password, segera hubungi kami.
+
+            Terima kasih,
+            Tim KuSehat
+            """
+            send_email("Password Berhasil Direset - KuSehat", [user.Email], email_body)
+            
+            return redirect_flash("Password berhasil direset. Silakan login.", "success", "login-section")
+
+        except Exception as e:
+            logger.error(f"Password reset error: {str(e)}")
+            return redirect_flash("Terjadi kesalahan saat mereset password.", "error")
+
+    return render_template("reset_password.html", token=token)
+
+@app.route("/update_user", methods=["POST"])
+@login_required
+def update_user(user):
+    try:
+        old_password = request.form.get("old_password", "")
+        if not old_password or not check_password(old_password, user.Password):
+            return redirect_flash("Password lama salah.", "error", "profile")
+
+        email_baru = request.form.get("email", "").strip()
+        if not email_baru:
+            return redirect_flash("Email tidak boleh kosong.", "error", "profile")
+        if User.exists(Email=email_baru) and User.get(Email=email_baru).UserID != user.UserID:
+            return redirect_flash("Email sudah digunakan.", "error", "profile")
+
+        user.NamaUser = request.form.get("nama", "").strip()
+        user.Email = email_baru
+
+        new_pass = request.form.get("new_password", "")
+        if new_pass:
+            if len(new_pass) < 6:
+                return redirect_flash("Password baru minimal 6 karakter.", "error", "profile")
+            user.Password = hash_password(new_pass)
+
+        return redirect_flash("Profil berhasil diperbarui.", "success", "profile")
+
+    except Exception as e:
+        logger.error(f"Update user error: {str(e)}")
+        return redirect_flash("Terjadi kesalahan saat memperbarui profil.", "error", "profile")
+
+@app.route("/activate_premium", methods=["POST"])
+@login_required
+def activate_premium(user):
+    try:
+        if user.PaketAktif:
+            return jsonify_error("Paket sudah aktif", 400)
+        if user.Saldo < PREMIUM_PRICE:
+            return jsonify_error(f"Saldo tidak mencukupi. Dibutuhkan Rp {PREMIUM_PRICE:,.0f}", 400)
+
+        user.Saldo -= PREMIUM_PRICE
+        user.PaketAktif = True
+        return jsonify({"success": True, "message": "Paket Premium berhasil diaktifkan", "new_balance": user.Saldo})
+
+    except Exception as e:
+        logger.error(f"Activate premium error: {str(e)}")
+        return jsonify_error("Terjadi kesalahan saat mengaktifkan paket premium.", 500)
+
+@app.route("/analyze", methods=["POST"])
+@login_required
+def analyze(user):
+    """Handle AJAX analyze request."""
+    try:
+        file = request.files.get('image')
+        is_valid, message = validate_image_file(file)
+        if not is_valid:
+            return jsonify_error(message)
+        
+        today_date = date.today()
+        upload_count_today = get_user_upload_count(user, today_date)
+        
+        if not is_premium_user(user) and upload_count_today >= 3:
+            return jsonify_error("Anda telah mencapai batas 3 analisis gratis hari ini. Silakan upgrade ke Premium untuk analisis tanpa batas.", 403)
+
+        filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(image_path)
+
+        result = detect_disease(image_path)
+        diagnosis = (
+            f"Penyakit: {result['class_name']} ({result['confidence']:.2%})\n\n"
+            f"Analisis Gemini:\n{analyze_with_gemini(result['class_name'], result['confidence'])}"
+        )
+        
+        Exchange(
+            User=user,
+            Tujuan='deteksi',
+            Gambar=filename,
+            Diagnosa=diagnosis,
+            Tanggal=datetime.now(),
+            SaldoReward=0.0
+        )
+        
+        return jsonify({
+            "success": True,
+            "diagnosis": diagnosis,
+            "image_path": url_for('static', filename=f'uploads/{filename}'),
+            "timestamp": datetime.now().strftime("%d %b %Y, %H:%M")
+        })
+
+    except Exception as e:
+        logger.error(f"Analyze error: {str(e)}")
+        return jsonify_error("Terjadi kesalahan saat menganalisis gambar.", 500)
+
+@app.route("/topup", methods=["POST"])
+@login_required
+def topup(user):
+    """Handle AJAX topup request."""
+    try:
+        jumlah_str = request.form.get("jumlah", "").strip()
+        metode = request.form.get("metode", "").strip()
+        
+        if not jumlah_str or not metode:
+            return jsonify_error("Jumlah dan metode harus diisi.")
+            
+        try:
+            jumlah = float(jumlah_str)
+            if jumlah <= 0:
+                return jsonify_error("Jumlah harus lebih dari 0.")
+
+        except ValueError:
+            return jsonify_error("Jumlah tidak valid.")
+
+        try:
+            from luno_python.client import Client
+            asset = "XBT" if metode == "btc" else "ETH"
+            client = Client(api_key_id=LUNO_API_KEY_ID, api_key_secret=LUNO_API_KEY_SECRET)
+            
+            funding_address = None
+            try:
+                funding_address = client.get_funding_address(asset=asset).get('address')
+            except Exception:
+                pass
+
+            if not funding_address:
+                try:
+                    funding_address = client.create_funding_address(asset=asset).get('address')
+                except Exception as e:
+                    logger.error(f"Error creating funding address: {str(e)}")
+                
+            if not funding_address:
+                raise Exception("Gagal membuat alamat funding di Luno. Silakan coba lagi atau hubungi admin.")
+
+            TopUp(User=user, Jumlah=jumlah, Metode=metode.upper(), Tanggal=datetime.now())
+            
+            return jsonify({
+                "success": True,
+                "message": "Permintaan Top Up berhasil. Silakan kirim dana.",
+                "address": funding_address
+            })
+        except ImportError:
+            logger.error("Luno client not installed")
+            return jsonify_error("Library Luno tidak terinstall. Hubungi administrator.")
+        except Exception as e:
+            logger.error(f"Topup error: {str(e)}")
+            return jsonify_error(f"Terjadi kesalahan: {e}")
+
+    except Exception as e:
+        logger.error(f"Topup form error: {str(e)}")
+        return jsonify_error("Terjadi kesalahan saat memproses topup.")
 
 @app.route("/exchange", methods=["POST"])
-@db_session
-def exchange():
-    if "user_id" not in session:
-        return "❌ Harus login dulu."
+@login_required
+def exchange(user):
+    """Handle AJAX exchange request."""
+    try:
+        file = request.files.get("image")
+        is_valid, message = validate_image_file(file)
+        if not is_valid:
+            return jsonify_error(message)
 
-    user = User.get(UserID=session["user_id"])
-    tujuan = request.form.get("tujuan")
-    file = request.files.get("image")
-    if not file:
-        return "❌ Gambar tidak ada."
+        filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(image_path)
 
-    filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
-    image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(image_path)
+        tujuan = request.form.get("tujuan", "").strip()
+        if tujuan == "dokter" or tujuan == "rumah_sakit":
+            reward = REWARD_RUMAH_SAKIT
+            tujuan_text = "dokter"
+        elif tujuan == "data_ai":
+            reward = REWARD_DATA_AI
+            tujuan_text = "data_ai"
+        else:
+            return jsonify_error("Tujuan penukaran tidak valid.")
 
-    reward = 100000.0 if tujuan == "dokter" else 200000.0
+        Exchange(User=user, Tujuan=tujuan_text, Gambar=filename, Diagnosa="Upload ke exchange", Tanggal=datetime.now(), SaldoReward=reward)
+        user.Saldo += reward
+        
+        return jsonify({
+            "success": True,
+            "message": f"Gambar ditukar! Saldo +IDR {reward:,.2f}",
+            "new_balance": user.Saldo,
+            "image_path": url_for('static', filename=f'uploads/{filename}'),
+            "tujuan_display": "Data Medis Rumah Sakit" if tujuan_text == "dokter" else "Data Pelatihan AI",
+            "reward_amount": reward
+        })
+    except Exception as e:
+        logger.error(f"Exchange error: {str(e)}")
+        return jsonify_error(f"Terjadi kesalahan saat menukar gambar: {str(e)}")
 
-    Exchange(User=user, Tujuan=tujuan, Gambar=filename,
-             Diagnosa="Upload ke exchange",
-             Tanggal=datetime.now(), SaldoReward=reward)
-    user.Saldo += reward
+# =========================
+# Error Handlers
+# =========================
 
-    return redirect(url_for("home"))
+@app.errorhandler(413)
+def too_large(e):
+    return jsonify_error("File terlalu besar. Maksimal 10MB", 413)
 
+@app.errorhandler(404)
+def not_found(e):
+    return redirect_flash("Halaman tidak ditemukan.", "error")
+
+@app.errorhandler(500)
+def internal_error(e):
+    logger.error(f"Internal server error: {str(e)}")
+    return redirect_flash("Terjadi kesalahan server. Silakan coba lagi.", "error")
+
+# =========================
+# Jalankan Aplikasi
+# =========================
 if __name__ == "__main__":
+    # Muat model sekali di awal untuk mengurangi latency pada analisis pertama
+    load_ai_model()
     app.run(host='0.0.0.0', port=5001, debug=True)
