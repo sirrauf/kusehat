@@ -30,9 +30,9 @@ app = Flask(__name__)
 
 # HARDCODED CONFIGURATION
 app.secret_key = "GANTI_DENGAN_SECRET_KEY_YANG_AMAN_INI"
-GEMINI_API_KEY = "REPLACE_WITH_YOUR_KEY"
-LUNO_API_KEY_ID = "REPLACE_WITH_YOUR_KEY"
-LUNO_API_KEY_SECRET = "REPLACE_WITH_YOUR_SECRET"
+GEMINI_API_KEY = "AIzaSyBlv6T1_IzO7rTXQKkQ1Y5vpGU08ZFZvyA"
+LUNO_API_KEY_ID="jnm42w8w23t8v"
+LUNO_API_KEY_SECRET="QSRtcDAysoiAs3IiRrDtqaXeO35SPzFMXU0niYUHNnc"
 
 # Konfigurasi Upload
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
@@ -48,9 +48,9 @@ REWARD_DATA_AI = 200000.0
 app.config.update(
     MAIL_SERVER='smtp.gmail.com',
     MAIL_PORT=587,                # gunakan 587 untuk starttls()
-    MAIL_USERNAME='youremail@example.com',   # GANTI
-    MAIL_PASSWORD='your_app_password',       # GANTI (App Password 16 digit)
-    MAIL_SENDER='youremail@example.com',     # GANTI
+    MAIL_USERNAME='anandatechnologysolution@gmail.com',   # GANTI
+    MAIL_PASSWORD='@Viti412',       # GANTI (App Password 16 digit)
+    MAIL_SENDER='anandatechnologysolution@gmail.com',     # GANTI
 )
 s = URLSafeTimedSerializer(app.secret_key)
 
@@ -80,6 +80,39 @@ def check_password(plain_password: str, hashed_password: str):
 def jsonify_error(message: str, status_code: int = 400):
     return jsonify({"success": False, "error": message}), status_code
 
+
+def _extract_luno_address(resp):
+    """
+    Robustly extract deposit address from various Luno API response shapes.
+    Known shapes:
+      - {"address": "bc1....", "asset": "XBT", ...}
+      - {"receive_address": "0x...", ...}
+      - {"funding_address": {"address": "bc1..."}}  # hypothetical/nested
+      - {"addresses": [{"address": "..."}, ...]}
+    """
+    try:
+        if not isinstance(resp, dict):
+            return None
+        # direct fields
+        for key in ("address", "receive_address", "deposit_address"):
+            if key in resp and resp[key]:
+                return resp[key]
+        # nested common shapes
+        if "funding_address" in resp and isinstance(resp["funding_address"], dict):
+            addr = resp["funding_address"].get("address")
+            if addr:
+                return addr
+        # list shapes
+        for list_key in ("addresses", "funding_addresses"):
+            if list_key in resp and isinstance(resp[list_key], (list, tuple)) and resp[list_key]:
+                first = resp[list_key][0]
+                if isinstance(first, dict):
+                    for key in ("address", "receive_address", "deposit_address"):
+                        if key in first and first[key]:
+                            return first[key]
+        return None
+    except Exception:
+        return None
 def redirect_flash(message: str, category: str, anchor: str = None):
     flash(message, category)
     return redirect(url_for('home') + f"#{anchor}" if anchor else url_for('home'))
@@ -411,9 +444,93 @@ def activate_premium(user):
         logger.error(f"Activate premium error: {str(e)}")
         return jsonify_error("Terjadi kesalahan saat mengaktifkan paket premium.", 500)
 
-# =========================
-# Jalankan Aplikasi
-# =========================
-if __name__ == "__main__":
-    load_ai_model()
-    app.run(host='0.0.0.0', port=5001, debug=True)
+
+@app.route("/topup", methods=["POST"])
+@login_required
+@db_session
+def topup(user):
+    try:
+        jumlah_str = request.form.get("jumlah", "").strip()
+        metode = request.form.get("metode", "").strip().lower()
+
+        if not jumlah_str or not metode:
+            return jsonify_error("Jumlah dan metode harus diisi.")
+
+        try:
+            jumlah = float(jumlah_str)
+            if jumlah <= 0:
+                return jsonify_error("Jumlah harus lebih dari 0.")
+        except ValueError:
+            return jsonify_error("Jumlah tidak valid.")
+
+        allowed = {"btc", "eth", "bank"}
+        if metode not in allowed:
+            return jsonify_error("Metode tidak dikenal. Pilih: btc, eth, atau bank.")
+
+        address = None
+        mode = "manual"
+        reference_code = None
+        instructions = None
+
+        if metode in {"btc", "eth"}:
+            asset = "XBT" if metode == "btc" else "ETH"
+            try:
+                from luno_python.client import Client
+                client = Client(api_key_id=LUNO_API_KEY_ID, api_key_secret=LUNO_API_KEY_SECRET)
+
+                # 1) Try get funding address
+                try:
+                    resp = client.get_funding_address(asset=asset)
+                    address = _extract_luno_address(resp if isinstance(resp, dict) else getattr(resp, "__dict__", {}))
+                except Exception as e:
+                    logger.warning(f"Luno get_funding_address error: {e}")
+
+                # 2) If none, try create funding address
+                if not address:
+                    try:
+                        resp = client.create_funding_address(asset=asset)
+                        address = _extract_luno_address(resp if isinstance(resp, dict) else getattr(resp, "__dict__", {}))
+                    except Exception as e:
+                        logger.warning(f"Luno create_funding_address error: {e}")
+
+                if address:
+                    mode = "wallet"
+                else:
+                    # keep manual fallback
+                    import uuid as _uuid
+                    reference_code = f"TOPUP-{asset}-{_uuid.uuid4().hex[:10].upper()}"
+                    instructions = "Alamat wallet tidak tersedia dari Luno. Gunakan Kode Referensi ini dan hubungi admin untuk konfirmasi deposit."
+                    mode = "manual"
+
+            except ImportError:
+                logger.warning("luno_python tidak terinstal; beralih ke mode manual")
+                import uuid as _uuid
+                reference_code = f"TOPUP-{asset}-{_uuid.uuid4().hex[:10].upper()}"
+                instructions = "Library Luno tidak tersedia. Gunakan Kode Referensi ini dan hubungi admin untuk konfirmasi deposit."
+                mode = "manual"
+            except Exception as e:
+                logger.error(f"Luno API error (umum): {str(e)}")
+                import uuid as _uuid
+                reference_code = f"TOPUP-{asset}-{_uuid.uuid4().hex[:10].upper()}"
+                instructions = "Terjadi masalah saat menghubungi Luno. Gunakan Kode Referensi ini dan hubungi admin."
+                mode = "manual"
+
+        elif metode == "bank":
+            import uuid as _uuid
+            reference_code = f"TOPUP-BANK-{_uuid.uuid4().hex[:10].upper()}"
+            instructions = "Silakan transfer ke rekening perusahaan dan cantumkan Kode Referensi pada berita/notes transfer."
+
+        # Catat TopUp ke database (request)
+        TopUp(User=user, Jumlah=jumlah, Metode=metode.upper(), Tanggal=datetime.now())
+
+        return jsonify({
+            "success": True,
+            "message": "Permintaan Top Up dibuat.",
+            "mode": mode,
+            "address": address,                 # non-null jika mode = wallet
+            "reference_code": reference_code,   # non-null jika mode = manual
+            "instructions": instructions
+        })
+    except Exception as e:
+        logger.error(f"Topup error: {str(e)}")
+        return jsonify_error("Gagal membuat alamat deposit. Silakan coba lagi atau pilih metode lain.", 500)
