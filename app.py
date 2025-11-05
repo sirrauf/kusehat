@@ -15,7 +15,8 @@ from PIL import Image
 import bcrypt
 from itsdangerous import URLSafeTimedSerializer
 import logging
-import smtplib
+# --- DIUBAH: Hapus import smtplib dan ssl, ganti dengan Flask-Mail ---
+from flask_mail import Mail, Message
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -43,49 +44,47 @@ PREMIUM_PRICE = 150000.0
 REWARD_RUMAH_SAKIT = 100000.0
 REWARD_DATA_AI = 200000.0
 
-# CATATAN: Ganti konfigurasi di bawah dengan milik Anda.
-# 1. Ganti 'email_pribadi_anda@gmail.com' dengan alamat Gmail Anda.
-# 2. Ganti 'xxxxxxxxxxxxxxxx' dengan App Password 16 karakter yang dibuat di Google Account.
-#    JANGAN gunakan password Gmail utama Anda!
-#
-# Konfigurasi Email dengan Gmail SMTP (HARDCODED)
+# --- DIUBAH: Konfigurasi Email untuk Flask-Mail ---
 app.config.update(
-    MAIL_SERVER='smtp.gmail.com',
-    MAIL_PORT=587,  # Port untuk TLS
-    MAIL_USERNAME='email_pribadi_anda@gmail.com', # <-- GANTI INI
-    MAIL_PASSWORD='xxxxxxxxxxxxxxxx',            # <-- GANTI INI (Pake App Password jangan password gmail pribadi)
-    MAIL_SENDER='email_pribadi_anda@gmail.com', # <-- GANTI INI
+    # Server dan Port dari informasi akun hosting
+    MAIL_SERVER='cendrawasih.kencang.com',
+    MAIL_PORT=465,
+    # Kredensial dari informasi akun hosting
+    MAIL_USERNAME='admin@kusehat-ai.com',
+    MAIL_PASSWORD='@Viti412',        # <-- GANTI INI DENGAN PASSWORD YANG BENAR
+    # Email pengirim default
+    MAIL_DEFAULT_SENDER='admin@kusehat-ai.com',
+    # --- Pengaturan Keamanan untuk Port 465 ---
+    MAIL_USE_SSL=True,      # Gunakan SSL untuk port 465
+    MAIL_USE_TLS=False,     # Jangan gunakan TLS jika SSL sudah aktif
 )
+
+# --- DIUBAH: Inisialisasi Flask-Mail ---
+mail = Mail(app)
+
 s = URLSafeTimedSerializer(app.secret_key)
 
 # =========================
 # Utilitas & Helper Functions
 # =========================
 
+# --- DIUBAH: Fungsi send_email yang jauh lebih sederhana ---
 def send_email(subject, recipients, body):
-    """Mengirim email menggunakan smtplib dengan Gmail (TLS)."""
+    """Mengirim email menggunakan Flask-Mail."""
     try:
-        message = f"""\
-        Subject: {subject}
-        To: {', '.join(recipients)}
-        From: {app.config['MAIL_SENDER']}
-
-        {body}"""
-
-        # Gunakan context manager untuk koneksi SMTP agar otomatis ditutup
-        with smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT']) as server:
-            # Amankan koneksi dengan enkripsi TLS
-            server.starttls()
-            server.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
-            server.sendmail(app.config['MAIL_SENDER'], recipients, message)
-
+        msg = Message(
+            subject=subject,
+            recipients=recipients,
+            body=body
+        )
+        mail.send(msg)
         logger.info(f"Email sent to {recipients}")
         return True
-
     except Exception as e:
         logger.error(f"Failed to send email: {str(e)}")
         return False
 
+# ... (Sisanya kode Anda, dari hash_password hingga akhir, TIDAK PERLU DIUBAH) ...
 def hash_password(password: str):
     """Hash password menggunakan bcrypt."""
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -111,14 +110,14 @@ def login_required(f):
             if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
                 return jsonify_error("Unauthorized. Please log in.", 401)
             return redirect_flash("Anda harus login terlebih dahulu.", "error", "login-section")
-        
+
         with db_session:
             try:
                 user = User.get(UserID=session["user_id"])
                 if not user:
                     session.clear()
                     return redirect_flash("Sesi tidak valid, silakan login lagi.", "error", "login-section")
-                
+
                 # Tambahkan objek user ke fungsi route
                 kwargs['user'] = user
                 return f(*args, **kwargs)
@@ -132,17 +131,17 @@ def validate_image_file(file):
     """Validasi file gambar yang diunggah."""
     if not file or not file.filename:
         return False, "Tidak ada file yang dipilih"
-    
+
     if not file.filename.lower().endswith(('.jpg', '.jpeg', '.png')):
         return False, "Tipe file tidak valid. Hanya .jpg, .jpeg, .png"
-    
+
     file.seek(0, os.SEEK_END)
     file_size = file.tell()
     file.seek(0)
-    
+
     if file_size > 10 * 1024 * 1024:
         return False, "Ukuran file terlalu besar. Maksimal 10MB"
-    
+
     try:
         img = Image.open(file)
         img.verify()
@@ -154,7 +153,7 @@ def validate_image_file(file):
 def get_user_upload_count(user, today_date):
     """Menghitung jumlah upload user untuk deteksi pada hari ini."""
     return select(
-        ex for ex in user.exchanges 
+        ex for ex in user.exchanges
         if ex.Tujuan == 'deteksi' and ex.Tanggal.date() == today_date
     ).count()
 
@@ -168,7 +167,7 @@ def is_premium_user(user):
 
 db = Database()
 try:
-    # PAKE SERVICE DARI NEON UNTUK POSTGRESQL, COCOK UNTUK PRODUKSI 
+    # PAKE SERVICE DARI NEON UNTUK POSTGRESQL, COCOK UNTUK PRODUKSI
     db.bind(
         provider='postgres',
         host='ep-nameless-salad-a1omfeby-pooler.ap-southeast-1.aws.neon.tech',
@@ -306,10 +305,10 @@ def home():
         if not user:
             session.clear()
             return render_template("auth.html")
-        
+
         today_date = date.today()
         upload_count_today = get_user_upload_count(user, today_date)
-        
+
         return render_template("main.html", user=user, upload_count_today=upload_count_today)
     return render_template("auth.html")
 
@@ -321,16 +320,16 @@ def upload_analyze(user):
     method = request.form.get("method", "")
     if method != "upload":
         return redirect(url_for('home'))
-    
+
     file = request.files.get('image')
     is_valid, message = validate_image_file(file)
     if not is_valid:
         flash(message, "error")
         return redirect(url_for('home'))
-    
+
     today_date = date.today()
     upload_count_today = get_user_upload_count(user, today_date)
-    
+
     if not is_premium_user(user):
         if upload_count_today >= 3:
             flash("Anda telah mencapai batas 3 analisis gratis hari ini. Silakan upgrade ke Premium untuk analisis tanpa batas.", "error")
@@ -340,13 +339,13 @@ def upload_analyze(user):
         filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
         image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(image_path)
-        
+
         result = detect_disease(image_path)
         diagnosis = (
             f"Penyakit: {result['class_name']} ({result['confidence']:.2%})\n\n"
             f"Analisis Gemini:\n{analyze_with_gemini(result['class_name'], result['confidence'])}"
         )
-        
+
         Exchange(
             User=user,
             Tujuan='deteksi',
@@ -355,7 +354,7 @@ def upload_analyze(user):
             Tanggal=datetime.now(),
             SaldoReward=0.0
         )
-        
+
         return render_template("main.html", user=user,
                                upload_count_today=upload_count_today + 1,
                                diagnosis=diagnosis, image_path=filename)
@@ -371,10 +370,10 @@ def login():
     try:
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
-        
+
         if not email or not password:
             return redirect_flash("Email dan password harus diisi.", "error", "login-section")
-            
+
         user = User.get(Email=email)
         if user and check_password(password, user.Password):
             session["user_id"] = user.UserID
@@ -397,11 +396,11 @@ def register():
             return redirect_flash("Email sudah terdaftar.", "error", "register-section")
         if len(form_data['password']) < 6:
             return redirect_flash("Password minimal 6 karakter.", "error", "register-section")
-        
+
         User(
             NamaUser=form_data['nama'],
             Email=form_data['email'],
-            Password=hash_password(form_data['password']), 
+            Password=hash_password(form_data['password']),
             Register_Date=datetime.now()
         )
         return redirect_flash("Registrasi berhasil, silakan login.", "success", "login-section")
@@ -422,7 +421,7 @@ def forgot_password():
         email = request.form.get("email", "").strip()
         if not email:
             return redirect_flash("Email harus diisi.", "error", "login-section")
-            
+
         user = User.get(Email=email)
         if user:
             token = s.dumps(user.Email, salt='password-reset-salt')
@@ -430,7 +429,7 @@ def forgot_password():
             user.reset_token_expiration = datetime.now() + timedelta(hours=1)
 
             reset_url = url_for('reset_password', token=token, _external=True)
-            
+
             email_body = f"""Halo {user.NamaUser},
 
             Kami menerima permintaan untuk mereset password akun Anda. Klik tautan berikut untuk membuat password baru:
@@ -481,9 +480,9 @@ def reset_password(token):
             # --- PERBAIKAN UTAMA ---
             # Jangan set ke None untuk menghindari error database jika kolom adalah NOT NULL
             # Gunakan string kosong dan atur waktu kedaluwarsa ke masa lalu
-            user.reset_token = "" 
+            user.reset_token = ""
             user.reset_token_expiration = datetime.now() - timedelta(days=1)
-            
+
             email_body = f"""Halo {user.NamaUser},
 
             Password akun Anda telah berhasil direset.
@@ -496,7 +495,7 @@ def reset_password(token):
             Tim KuSehat
             """
             send_email("Password Berhasil Direset - KuSehat", [user.Email], email_body)
-            
+
             return redirect_flash("Password berhasil direset. Silakan login.", "success", "login-section")
 
         except Exception as e:
@@ -560,10 +559,10 @@ def analyze(user):
         is_valid, message = validate_image_file(file)
         if not is_valid:
             return jsonify_error(message)
-        
+
         today_date = date.today()
         upload_count_today = get_user_upload_count(user, today_date)
-        
+
         if not is_premium_user(user) and upload_count_today >= 3:
             return jsonify_error("Anda telah mencapai batas 3 analisis gratis hari ini. Silakan upgrade ke Premium untuk analisis tanpa batas.", 403)
 
@@ -576,7 +575,7 @@ def analyze(user):
             f"Penyakit: {result['class_name']} ({result['confidence']:.2%})\n\n"
             f"Analisis Gemini:\n{analyze_with_gemini(result['class_name'], result['confidence'])}"
         )
-        
+
         Exchange(
             User=user,
             Tujuan='deteksi',
@@ -585,7 +584,7 @@ def analyze(user):
             Tanggal=datetime.now(),
             SaldoReward=0.0
         )
-        
+
         return jsonify({
             "success": True,
             "diagnosis": diagnosis,
@@ -604,10 +603,10 @@ def topup(user):
     try:
         jumlah_str = request.form.get("jumlah", "").strip()
         metode = request.form.get("metode", "").strip()
-        
+
         if not jumlah_str or not metode:
             return jsonify_error("Jumlah dan metode harus diisi.")
-            
+
         try:
             jumlah = float(jumlah_str)
             if jumlah <= 0:
@@ -620,7 +619,7 @@ def topup(user):
             from luno_python.client import Client
             asset = "XBT" if metode == "btc" else "ETH"
             client = Client(api_key_id=LUNO_API_KEY_ID, api_key_secret=LUNO_API_KEY_SECRET)
-            
+
             funding_address = None
             try:
                 funding_address = client.get_funding_address(asset=asset).get('address')
@@ -632,12 +631,12 @@ def topup(user):
                     funding_address = client.create_funding_address(asset=asset).get('address')
                 except Exception as e:
                     logger.error(f"Error creating funding address: {str(e)}")
-                
+
             if not funding_address:
                 raise Exception("Gagal membuat alamat funding di Luno. Silakan coba lagi atau hubungi admin.")
 
             TopUp(User=user, Jumlah=jumlah, Metode=metode.upper(), Tanggal=datetime.now())
-            
+
             return jsonify({
                 "success": True,
                 "message": "Permintaan Top Up berhasil. Silakan kirim dana.",
@@ -680,7 +679,7 @@ def exchange(user):
 
         Exchange(User=user, Tujuan=tujuan_text, Gambar=filename, Diagnosa="Upload ke exchange", Tanggal=datetime.now(), SaldoReward=reward)
         user.Saldo += reward
-        
+
         return jsonify({
             "success": True,
             "message": f"Gambar ditukar! Saldo +IDR {reward:,.2f}",
