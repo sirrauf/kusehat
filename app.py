@@ -156,9 +156,9 @@ try:
     db.bind(
         provider='postgres',
         database='kusehatdb',
-        host='ep-nameless-salad-a1omfeby-pooler.ap-southeast-1.aws.neon.tech',
+        host='ep-silent-cell-a13xb1pn-pooler.ap-southeast-1.aws.neon.tech',
         user='neondb_owner',
-        password='npg_EjGr1Yw9JbNR',
+        password='npg_UhDrtBkwO12T',
         port=5432,
         sslmode='require'
     )
