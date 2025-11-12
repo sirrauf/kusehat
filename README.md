@@ -24,6 +24,9 @@ Nama anggota tim: Ananda Technology Solution(AnTS Groups)
 # Website KuSehat Beta Testing
 [Website KuSehat Beta Testing](https://temolla-kusehat.hf.space/)
 
+# Website AI KuSehat Version 1.0.0.0 Publik
+[Website AI KuSehat](https://kusehat-ai.com/)
+
 # Cara Training model Dataset:
 1. [Kunjungi Website Teachable Machine](https://teachablemachine.withgoogle.com/)
 2. Klik Get Started,kemudian klik Open an existing project from a file, pilih file dataset model extensi dot tm.
@@ -61,6 +64,7 @@ Demo KuSehat Website untuk submit World Hacker Code Leage Tampilan melalui Scree
 ![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/kusehat-hackathon-vibe-coding/blob/main/SS%20Tampilan/SS7.png?raw=true)
 ![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/kusehat-hackathon-vibe-coding/blob/main/SS%20Tampilan/SS8.png?raw=true)
 ![Tampilan KuSehat Submission World The World Computer Hacker League ](https://github.com/sirrauf/kusehat-hackathon-vibe-coding/blob/main/SS%20Tampilan/SS9.png?raw=true)
+![Tampilan KuSehat AI hasil deteksi penyakit](https://github.com/sirrauf/kusehat/blob/version1-postgresql/SS_Tampilan_Result_Deteksi/SS_deteksi_kanker_payudara.png?raw=true)
 
 
 
