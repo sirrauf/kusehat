@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, date
 from functools import wraps
 import sys
 
-from flask import Flask, render_template, request, session, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, session, redirect, url_for, flash, jsonify, make_response
 from werkzeug.utils import secure_filename
 from pony.orm import Database, Required, Optional, PrimaryKey, Set, db_session, select
 from PIL import Image
@@ -44,12 +44,15 @@ PREMIUM_PRICE = 150000.0
 REWARD_RUMAH_SAKIT = 100000.0
 REWARD_DATA_AI = 200000.0
 
+# URL dasar situs (ubah sesuai domain production)
+SITE_BASE_URL = "http://127.0.0.1:5000"  # ← ganti ke "https://kusehat.co.id" di production
+
 # Konfigurasi Email untuk Flask-Mail
 app.config.update(
     MAIL_SERVER='smtp.gmail.com',
     MAIL_PORT=587,
     MAIL_USERNAME='anandatechnologysolution@gmail.com',
-    MAIL_PASSWORD='kqdv naan znzx encd',        # <-- GANTI INI DENGAN APP PASSWORD YANG BENAR
+    MAIL_PASSWORD='kqdv naan znzx encd',        # <-- GANTI DENGAN APP PASSWORD
     MAIL_DEFAULT_SENDER='anandatechnologysolution@gmail.com',
     MAIL_USE_TLS=True,
     MAIL_USE_SSL=False,
@@ -60,11 +63,18 @@ mail = Mail(app)
 s = URLSafeTimedSerializer(app.secret_key)
 
 # =========================
-# Utilitas & Helper Functions
+# Helper Functions
 # =========================
 
+def discover_public_paths(app):
+    """Return daftar route publik untuk sitemap."""
+    return [
+        "/",
+        "/about",
+        "/contact",
+    ]
+
 def send_email(subject, recipients, body):
-    """Mengirim email menggunakan Flask-Mail."""
     try:
         msg = Message(subject=subject, recipients=recipients, body=body)
         mail.send(msg)
@@ -75,24 +85,19 @@ def send_email(subject, recipients, body):
         return False
 
 def hash_password(password: str):
-    """Hash password menggunakan bcrypt."""
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def check_password(plain_password: str, hashed_password: str):
-    """Verifikasi password dengan hash bcrypt."""
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
 def jsonify_error(message: str, status_code: int = 400):
-    """Mengembalikan respons error JSON."""
     return jsonify({"success": False, "error": message}), status_code
 
 def redirect_flash(message: str, category: str, anchor: str = None):
-    """Flash message dan redirect ke anchor tertentu."""
     flash(message, category)
-    return redirect(url_for('home') + f"#{anchor}" if anchor else url_for('home'))
+    return redirect(url_for('baseindex') + f"#{anchor}" if anchor else url_for('baseindex'))
 
 def login_required(f):
-    """Decorator untuk mengecek sesi login dan menambahkan objek user ke kwargs."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if "user_id" not in session:
@@ -116,7 +121,6 @@ def login_required(f):
     return decorated_function
 
 def validate_image_file(file):
-    """Validasi file gambar yang diunggah."""
     if not file or not file.filename:
         return False, "Tidak ada file yang dipilih"
     if not file.filename.lower().endswith(('.jpg', '.jpeg', '.png')):
@@ -135,14 +139,12 @@ def validate_image_file(file):
         return False, "File bukan gambar yang valid"
 
 def get_user_upload_count(user, today_date):
-    """Menghitung jumlah upload user untuk deteksi pada hari ini."""
     return select(
         ex for ex in user.exchanges
         if ex.Tujuan == 'deteksi' and ex.Tanggal.date() == today_date
     ).count()
 
 def is_premium_user(user):
-    """Memeriksa apakah user memiliki akses premium."""
     return user.PaketAktif
 
 # =========================
@@ -151,7 +153,6 @@ def is_premium_user(user):
 
 db = Database()
 
-# --- HANYA POSTGRES, TANPA FALLBACK ---
 try:
     db.bind(
         provider='postgres',
@@ -168,7 +169,7 @@ except Exception as e:
     print("\n!!! GAGAL KONEKSI KE DATABASE POSTGRES !!!")
     print(f"Error: {str(e)}")
     print("Aplikasi akan berhenti. Silakan periksa konfigurasi database Anda.")
-    sys.exit(1) # HENTI APLIKASI JIKA GAGAL KONEKSI
+    sys.exit(1)
 
 class User(db.Entity):
     _table_ = "user"
@@ -182,11 +183,9 @@ class User(db.Entity):
     PaketAktif = Required(bool, default=False)
     reset_token = Optional(str)
     reset_token_expiration = Optional(datetime)
-    
     is_verified = Required(bool, default=False)
     email_verification_token = Optional(str)
     email_verification_token_expiration = Optional(datetime)
-    
     topups = Set("TopUp")
     exchanges = Set("Exchange")
 
@@ -211,7 +210,7 @@ class Exchange(db.Entity):
 db.generate_mapping(create_tables=True)
 
 # =========================
-# AI Model & Analysis Functions
+# AI Functions (Opsional, bisa di-skip jika belum ada model)
 # =========================
 
 model = None
@@ -277,17 +276,21 @@ def analyze_with_gemini(disease_name: str, confidence: float):
         return f"Gagal akses Gemini: {str(e)}"
 
 # =========================
-# Routes / Endpoints
+# Routes
 # =========================
 
 @app.route("/health")
 def health():
-    """Healthcheck sederhana agar mudah mengecek 200 OK tanpa template/db."""
     return jsonify({"ok": True, "time": datetime.utcnow().isoformat() + "Z"}), 200
 
+# ✅ Ganti nama fungsi dari `baseindex` → `home`
 @app.route("/")
+def home():  # <-- ini penting!
+    return render_template("home.html")
+
+@app.route("/kusehat-ai")
 @db_session
-def home():
+def kusehat_ai():
     if "user_id" in session:
         user = User.get(UserID=session["user_id"])
         if not user:
@@ -297,10 +300,15 @@ def home():
         upload_count_today = get_user_upload_count(user, today_date)
         return render_template("main.html", user=user, upload_count_today=upload_count_today)
     return render_template("auth.html")
-    
-    
 
-# ==== Tambahan: robots.txt ====
+@app.route("/about")
+def about():
+    return render_template("about.html")
+
+@app.route("/contact")
+def contact():
+    return render_template("contact.html")
+
 @app.route("/robots.txt")
 def robots_txt():
     lines = [
@@ -318,7 +326,6 @@ def robots_txt():
     resp.headers["Content-Type"] = "text/plain; charset=utf-8"
     return resp
 
-# ==== Tambahan: sitemap.xml ====
 @app.route("/sitemap.xml")
 def sitemap_xml():
     try:
@@ -351,10 +358,9 @@ def sitemap_xml():
         resp.headers["Content-Type"] = "application/xml; charset=utf-8"
         resp.headers["Cache-Control"] = "public, max-age=3600"
         return resp
-    except Exception:
+    except Exception as e:
         logger.exception("Error generate sitemap")
         return jsonify_error("Gagal membuat sitemap.", 500)
-
 
 @app.route("/login", methods=["POST"])
 @db_session
@@ -367,7 +373,7 @@ def login():
         user = User.get(Email=email)
         if user and check_password(password, user.Password):
             if not user.is_verified:
-                return redirect_flash("Silakan verifikasi email Anda terlebih dahulu. Periksa inbox atau folder spam.", "error", "login-section")
+                return redirect_flash("Silakan verifikasi email Anda terlebih dahulu.", "error", "login-section")
             session["user_id"] = user.UserID
             user.Login_Date = datetime.now()
             return redirect_flash("Login berhasil!", "success")
@@ -401,7 +407,7 @@ def register():
         verify_url = url_for('verify_email', token=token, _external=True)
 
         email_body = f"""Halo {new_user.NamaUser},
-        
+
 Terima kasih telah mendaftar di KuSehat. Klik tautan berikut untuk memverifikasi alamat email Anda:
 {verify_url}
 
@@ -411,7 +417,7 @@ Tim KuSehat
         """
         send_email("Verifikasi Email - KuSehat", [new_user.Email], email_body)
 
-        return redirect_flash("Registrasi berhasil! Silakan periksa email Anda untuk verifikasi sebelum login.", "success", "login-section")
+        return redirect_flash("Registrasi berhasil! Silakan periksa email Anda untuk verifikasi.", "success", "login-section")
     except Exception as e:
         logger.error(f"Registration error: {str(e)}")
         return redirect_flash("Terjadi kesalahan saat registrasi.", "error", "register-section")
@@ -435,12 +441,12 @@ def forgot_password():
             user.reset_token_expiration = datetime.now() + timedelta(hours=1)
             reset_url = url_for('reset_password', token=token, _external=True)
             email_body = f"""Halo {user.NamaUser},
-            Kami menerima permintaan untuk mereset password akun Anda. Klik tautan berikut untuk membuat password baru:
-            {reset_url}
-            Tautan ini akan kadaluarsa dalam 1 jam untuk keamanan akun Anda.
-            Jika Anda tidak meminta reset password, abaikan email ini.
-            Terima kasih,
-            Tim KuSehat
+Kami menerima permintaan untuk mereset password akun Anda. Klik tautan berikut untuk membuat password baru:
+{reset_url}
+Tautan ini akan kadaluarsa dalam 1 jam.
+Jika Anda tidak meminta reset password, abaikan email ini.
+Terima kasih,
+Tim KuSehat
             """
             send_email("Reset Password - KuSehat", [user.Email], email_body)
         return redirect_flash("Jika email Anda terdaftar, instruksi reset password telah dikirim.", "success", "login-section")
@@ -454,7 +460,6 @@ def reset_password(token):
     try:
         email = s.loads(token, salt='password-reset-salt', max_age=3600)
     except Exception as e:
-        logger.error(f"Token validation error: {str(e)}")
         return redirect_flash("Tautan reset tidak valid atau kadaluarsa.", "error", "login-section")
     user = User.get(Email=email)
     if not user or user.reset_token != token or user.reset_token_expiration < datetime.now():
@@ -473,11 +478,11 @@ def reset_password(token):
             user.reset_token = ""
             user.reset_token_expiration = datetime.now() - timedelta(days=1)
             email_body = f"""Halo {user.NamaUser},
-            Password akun Anda telah berhasil direset.
-            Anda sekarang dapat login dengan password baru Anda.
-            Jika Anda tidak mereset password, segera hubungi kami.
-            Terima kasih,
-            Tim KuSehat
+Password akun Anda telah berhasil direset.
+Anda sekarang dapat login dengan password baru Anda.
+Jika Anda tidak mereset password, segera hubungi kami.
+Terima kasih,
+Tim KuSehat
             """
             send_email("Password Berhasil Direset - KuSehat", [user.Email], email_body)
             return redirect_flash("Password berhasil direset. Silakan login.", "success", "login-section")
@@ -503,27 +508,24 @@ def verify_email(token):
     else:
         return render_template("verify_email.html", success=False)
 
-# --- ROUTE PROFIL DAN UPDATE DIHAPUS/DIUBAH ---
-# --- DIHAPUS: Route /profile dan /update_profile tidak lagi diperlukan ---
-
 @app.route("/upload", methods=["POST"])
 @db_session
 @login_required
 def upload_analyze(user):
     method = request.form.get("method", "")
     if method != "upload":
-        return redirect(url_for('home'))
+        return redirect(url_for('baseindex'))
     file = request.files.get('image')
     is_valid, message = validate_image_file(file)
     if not is_valid:
         flash(message, "error")
-        return redirect(url_for('home'))
+        return redirect(url_for('baseindex'))
     today_date = date.today()
     upload_count_today = get_user_upload_count(user, today_date)
     if not is_premium_user(user):
         if upload_count_today >= 3:
-            flash("Anda telah mencapai batas 3 analisis gratis hari ini. Silakan upgrade ke Premium untuk analisis tanpa batas.", "error")
-            return redirect(url_for('home'))
+            flash("Anda telah mencapai batas 3 analisis gratis hari ini.", "error")
+            return redirect(url_for('baseindex'))
     try:
         filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
         image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -547,16 +549,14 @@ def upload_analyze(user):
     except Exception as e:
         logger.error(f"Upload analyze error: {str(e)}")
         flash("Terjadi kesalahan saat memproses gambar.", "error")
-        return redirect(url_for('home'))
+        return redirect(url_for('baseindex'))
 
-# --- ROUTE UPDATE USER SUDAH ADA DAN DIGUNAKAN OLEH FORM PROFIL ---
 @app.route("/update_user", methods=["POST"])
 @db_session
 @login_required
 def update_user(user):
     try:
         old_password = request.form.get("old_password", "")
-        # --- DIUBAH: Validasi password lama hanya jika password baru diisi ---
         new_pass = request.form.get("new_password", "")
         if new_pass and not old_password:
             return redirect_flash("Password lama harus diisi untuk mengubah password.", "error", "profile-section")
@@ -577,7 +577,6 @@ def update_user(user):
                 return redirect_flash("Password baru minimal 6 karakter.", "error", "profile-section")
             user.Password = hash_password(new_pass)
         
-        # --- DIUBAH: Redirect ke halaman utama dengan anchor profile-section ---
         return redirect_flash("Profil berhasil diperbarui.", "success", "profile-section")
     except Exception as e:
         logger.error(f"Update user error: {str(e)}")
@@ -609,7 +608,7 @@ def analyze(user):
         today_date = date.today()
         upload_count_today = get_user_upload_count(user, today_date)
         if not is_premium_user(user) and upload_count_today >= 3:
-            return jsonify_error("Anda telah mencapai batas 3 analisis gratis hari ini. Silakan upgrade ke Premium untuk analisis tanpa batas.", 403)
+            return jsonify_error("Batas 3 analisis gratis hari ini telah tercapai.", 403)
         filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
         image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(image_path)
@@ -665,7 +664,7 @@ def topup(user):
                 except Exception as e:
                     logger.error(f"Error creating funding address: {str(e)}")
             if not funding_address:
-                raise Exception("Gagal membuat alamat funding di Luno. Silakan coba lagi atau hubungi admin.")
+                raise Exception("Gagal membuat alamat funding di Luno.")
             TopUp(User=user, Jumlah=jumlah, Metode=metode.upper(), Tanggal=datetime.now())
             return jsonify({
                 "success": True,
@@ -674,7 +673,7 @@ def topup(user):
             })
         except ImportError:
             logger.error("Luno client not installed")
-            return jsonify_error("Library Luno tidak terinstall. Hubungi administrator.")
+            return jsonify_error("Library Luno tidak terinstall.")
         except Exception as e:
             logger.error(f"Topup error: {str(e)}")
             return jsonify_error(f"Terjadi kesalahan: {e}")
