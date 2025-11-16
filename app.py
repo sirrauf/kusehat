@@ -95,7 +95,10 @@ def jsonify_error(message: str, status_code: int = 400):
 
 def redirect_flash(message: str, category: str, anchor: str = None):
     flash(message, category)
-    return redirect(url_for('baseindex') + f"#{anchor}" if anchor else url_for('baseindex'))
+    target_url = url_for('home')  # ✅ Perbaikan: gunakan 'home' bukan 'baseindex'
+    if anchor:
+        target_url += f"#{anchor}"
+    return redirect(target_url)
 
 def login_required(f):
     @wraps(f)
@@ -283,9 +286,8 @@ def analyze_with_gemini(disease_name: str, confidence: float):
 def health():
     return jsonify({"ok": True, "time": datetime.utcnow().isoformat() + "Z"}), 200
 
-# ✅ Ganti nama fungsi dari `baseindex` → `home`
 @app.route("/")
-def home():  # <-- ini penting!
+def home():  # ✅ Sudah benar
     return render_template("home.html")
 
 @app.route("/kusehat-ai")
@@ -300,6 +302,14 @@ def kusehat_ai():
         upload_count_today = get_user_upload_count(user, today_date)
         return render_template("main.html", user=user, upload_count_today=upload_count_today)
     return render_template("auth.html")
+
+@app.route("/consult-doctor")
+def consult_doctor():
+    return render_template("comingsoon.html")
+
+@app.route("/buy-medicine")
+def buy_medicine():
+    return render_template("comingsoon.html")
 
 @app.route("/about")
 def about():
@@ -514,18 +524,18 @@ def verify_email(token):
 def upload_analyze(user):
     method = request.form.get("method", "")
     if method != "upload":
-        return redirect(url_for('baseindex'))
+        return redirect(url_for('home'))  # ✅ Perbaikan: gunakan 'home'
     file = request.files.get('image')
     is_valid, message = validate_image_file(file)
     if not is_valid:
         flash(message, "error")
-        return redirect(url_for('baseindex'))
+        return redirect(url_for('home'))  # ✅ Perbaikan: gunakan 'home'
     today_date = date.today()
     upload_count_today = get_user_upload_count(user, today_date)
     if not is_premium_user(user):
         if upload_count_today >= 3:
             flash("Anda telah mencapai batas 3 analisis gratis hari ini.", "error")
-            return redirect(url_for('baseindex'))
+            return redirect(url_for('home'))  # ✅ Perbaikan: gunakan 'home'
     try:
         filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
         image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -549,7 +559,7 @@ def upload_analyze(user):
     except Exception as e:
         logger.error(f"Upload analyze error: {str(e)}")
         flash("Terjadi kesalahan saat memproses gambar.", "error")
-        return redirect(url_for('baseindex'))
+        return redirect(url_for('home'))  # ✅ Perbaikan: gunakan 'home'
 
 @app.route("/update_user", methods=["POST"])
 @db_session
