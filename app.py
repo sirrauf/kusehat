@@ -45,7 +45,7 @@ REWARD_RUMAH_SAKIT = 100000.0
 REWARD_DATA_AI = 200000.0
 
 # URL dasar situs (ubah sesuai domain production)
-SITE_BASE_URL = "http://127.0.0.1:5000"  # ← ganti ke "https://kusehat.co.id" di production
+SITE_BASE_URL = "https://kusehat-app.hf.space/" # ← ganti ke "https://kusehat.co.id" di production
 
 # Konfigurasi Email untuk Flask-Mail
 app.config.update(
