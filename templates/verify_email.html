@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verifikasi Email - KuSehat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'inter': ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .fade-in { animation: fadeIn 0.5s ease-out; }
+            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+            .animate-spin { animation: spin 1s linear infinite; }
+            @keyframes spin { to { transform: rotate(360deg); } }
+        }
+    </style>
+</head>
+<body class="font-inter bg-gray-50 min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+        <div class="text-center">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
+                {% if success %}
+                    <i class="fas fa-check-circle text-3xl text-green-600"></i>
+                {% else %}
+                    <i class="fas fa-envelope-open-text text-3xl text-blue-600"></i>
+                {% endif %}
+            </div>
+            <h2 class="mt-6 text-3xl font-bold text-gray-900">
+                {% if success %}Verifikasi Berhasil!{% else %}Memverifikasi Email...{% endif %}
+            </h2>
+            <p class="mt-2 text-sm text-gray-600">
+                {% if success %}
+                    Akun Anda telah berhasil diverifikasi. Silakan masuk untuk melanjutkan.
+                {% else %}
+                    Mohon tunggu sebentar, kami sedang memverifikasi tautan Anda.
+                {% endif %}
+            </p>
+        </div>
+        <div class="bg-white py-8 px-6 shadow-xl rounded-xl">
+            <div id="loading-state" class="{% if success %}hidden{% endif %}">
+                <div class="text-center">
+                    <div class="animate-spin mx-auto h-8 w-8 border-b-2 border-blue-600 border-t-transparent rounded-full"></div>
+                    <p class="mt-4 text-sm text-gray-600">Sedang memvalidasi token verifikasi Anda...</p>
+                </div>
+            </div>
+            <div id="success-state" class="{% if not success %}hidden{% endif %}">
+                <div class="text-center space-y-4">
+                    <div class="p-4 bg-green-50 border border-green-200 rounded-lg">
+                        <p class="text-sm font-medium text-green-800">
+                            <i class="fas fa-check-circle mr-2"></i>
+                            Email Anda berhasil diverifikasi!
+                        </p>
+                    </div>
+                    <a href="{{ url_for('home') }}" class="w-full py-2.5 px-4 bg-black text-white font-medium rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all">
+                        <i class="fas fa-sign-in-alt mr-2"></i> Masuk ke KuSehat
+                    </a>
+                </div>
+            </div>
+            <div id="error-state" class="hidden">
+                 <div class="text-center space-y-4">
+                    <div class="p-4 bg-red-50 border border-red-200 rounded-lg">
+                        <p class="text-sm font-medium text-red-800">
+                            <i class="fas fa-exclamation-triangle mr-2"></i>
+                            Tautan verifikasi tidak valid atau sudah kadaluarsa.
+                        </p>
+                    </div>
+                    <a href="{{ url_for('home') }}" class="w-full py-2.5 px-4 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all">
+                        <i class="fas fa-arrow-left mr-2"></i> Kembali ke Halaman Utama
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Logic untuk menampilkan state error jika ada parameter di URL
+            // (Ini opsional, bisa juga di-handle sepenuhnya di backend)
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('error')) {
+                $('#loading-state').addClass('hidden');
+                $('#success-state').addClass('hidden');
+                $('#error-state').removeClass('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

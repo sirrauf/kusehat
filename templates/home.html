@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+
+{% block title %}Home | KuSehat Solution{% endblock %}
+
+{% block content %}
+<div class="text-center mb-5">
+    <h1 class="display-4 fw-bold text-primary">KuSehat Solution</h1>
+    <p class="lead text-muted">Your All-in-One Digital Health Platform</p>
+</div>
+
+<div class="row justify-content-center mb-5">
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-body">
+                <h3 class="card-title text-center mb-4">About KuSehat</h3>
+                <p class="card-text fs-5">
+                    <strong>KuSehat</strong> is a health technology innovation product from 
+                    <strong>PT Ananda Technology Solution</strong>.
+                </p>
+                <p class="card-text fs-5">
+                    KuSehat Solution is your solution for health. Our solution includes:
+                </p>
+                <ul class="list-group list-group-flush fs-5 mb-4">
+                    <li class="list-group-item"><strong>✅ Doctor Consultation</strong> – Real-Time Online (Chatting & Video Call)</li>
+                    <li class="list-group-item"><strong>✅ Purchase of Medicines</strong> – Fast, safe, and convenient</li>
+                    <li class="list-group-item"><strong>✅ Disease Detection</strong> – Real-Time Online using Camera & Image Upload</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Action Buttons -->
+<div class="row justify-content-center g-4">
+    <div class="col-md-4">
+        <a href="{{ url_for('kusehat_ai') }}" target="_blank" class="btn btn-danger btn-lg w-100 shadow">
+            🧠 AI Disease Detection
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a href="{{ url_for('consult_doctor') }}" target="_blank" class="btn btn-success btn-lg w-100 shadow">
+            👨‍⚕️ Doctor Consultation
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a href=""{{ url_for('buy_medicine') }}"" target="_blank" class="btn btn-info btn-lg w-100 shadow text-white">
+            💊 Purchase Medicines
+        </a>
+    </div>
+</div>
+
+<!-- Legality Info -->
+<div class="mt-5 p-4 bg-light rounded text-center">
+    <h5 class="text-primary">Official Company Legality</h5>
+    <p><strong>Date:</strong> 23 May 2025</p>
+    <p><strong>Number:</strong> AHU-004057.AH.01.31.Tahun 2025</p>
+    <p><strong>NIB:</strong> 0111230114854</p>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coming Soon - Website Kami Segera Hadir</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/comingsoon-style.css') }}">
+</head>
+<body>
+
+    <div class="container">
+        <h1 class="title">Website Kami Segera Hadir</h1>
+        <p class="subtitle">Kami sedang mempersiapkan sesuatu yang luar biasa untuk Anda.</p>
+
+        <div class="countdown">
+            <div class="time-box">
+                <span id="days"></span>
+                <p>Hari</p>
+            </div>
+            <div class="time-box">
+                <span id="hours">00</span>
+                <p>Jam</p>
+            </div>
+            <div class="time-box">
+                <span id="minutes">00</span>
+                <p>Menit</p>
+            </div>
+            <div class="time-box">
+                <span id="seconds">00</span>
+                <p>Detik</p>
+            </div>
+        </div>
+
+        <div class="social-links">
+            <a href="https://instagram.com/antsgroups">Instagram</a> |
+            <a href="https://www.facebook.com/profile.php?id=61577821041804">Facebook</a> |
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/comingsoon.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+:root {
+    --primary-color: #0d6efd;
+    --secondary-color: #0dcaf0;
+    --dark-color: #212529;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+    color: #333;
+}
+
+/* Navbar Adjustment */
+.content-wrapper {
+    margin-top: 56px; /* Height of navbar */
+    min-height: 80vh;
+}
+
+/* Hero Section */
+.hero-section {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    height: 600px;
+    background-image: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('https://img.freepik.com/free-photo/medical-banner-with-doctor-working-laptop_23-2149611211.jpg?w=1380');
+    background-size: cover;
+    background-position: center;
+}
+
+/* Card Hover Effects */
+.card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important;
+}
+
+/* Icons */
+.icon-box {
+    display: inline-block;
+    padding: 15px;
+    border-radius: 50%;
+    background-color: rgba(13, 110, 253, 0.1);
+}
+
+/* Table styling in About */
+.table th {
+    color: var(--dark-color);
+    font-weight: 600;
+}

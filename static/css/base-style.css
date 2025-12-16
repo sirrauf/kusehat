@@ -1,0 +1,27 @@
+/* Custom Styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+
+.card {
+    border-radius: 12px;
+}
+
+.btn-lg {
+    font-weight: 600;
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+}
+
+.btn-info {
+    background-color: #17a2b8;
+}
+
+.btn-info:hover {
+    background-color: #138496;
+}
+
+footer {
+    border-top: 1px solid #eaeaea;
+}
