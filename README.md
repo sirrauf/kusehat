@@ -22,10 +22,10 @@ Nama anggota tim: Ananda Technology Solution(AnTS Groups)
 [Video Demo Website KuSehat](https://youtu.be/hDp80JhjohA?si=2KgZKes7GuMsei3G)
 
 # Website KuSehat Beta Testing
-[Website KuSehat Beta Testing](https://temolla-kusehat.hf.space/)
+[Website KuSehat Beta Testing](https://kusehat-app.hf.space)
 
 # Website AI KuSehat Version 1.0.0.0 Publik
-[Website AI KuSehat](https://kusehat-ai.com/)
+[Website AI KuSehat](https://kusehat-app.hf.space)
 
 # Cara Training model Dataset:
 1. [Kunjungi Website Teachable Machine](https://teachablemachine.withgoogle.com/)
